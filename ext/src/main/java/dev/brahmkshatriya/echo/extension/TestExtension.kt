@@ -20,6 +20,7 @@ import dev.brahmkshatriya.echo.common.settings.Setting
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.json.Json
 
 @Serializable
@@ -32,8 +33,10 @@ data class Country(
 data class Channel(
     val id: String,
     val name: String,
+    val owners: List<String>,
     val country: String,
-    val is_nsfw: Boolean,
+    @SerialName("is_nsfw")
+    val isNsfw: Boolean,
     val logo: String,
 )
 
@@ -72,13 +75,12 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, SearchFeedCl
     private suspend fun String.toShelf(countryCode: String): List<Shelf> {
         val allStreams = call(streamsLink).toData<List<Stream>>()
         return this.toData<List<Channel>>().filter {
-                !it.is_nsfw && it.country == countryCode
+                !it.isNsfw && it.country == countryCode
             }.map {
                 Track(
                     id = it.id,
                     title = it.name,
-                    subtitle = it.name,
-                    description = it.name,
+                    subtitle = it.owners.joinToString(", "),
                     cover = it.logo.toImageHolder(),
                     streamables = allStreams.filter { ch -> ch.channel == it.id }
                         .mapIndexed { idx, ch -> Streamable.server(ch.url, idx, ch.quality) }
@@ -120,13 +122,12 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, SearchFeedCl
     private suspend fun String.toSearchShelf(query: String): List<Shelf> {
         val allStreams = call(streamsLink).toData<List<Stream>>()
         return this.toData<List<Channel>>().filter {
-            !it.is_nsfw && it.name.contains(query, true)
+            !it.isNsfw && it.name.contains(query, true)
         }.take(100).map {
             Track(
                 id = it.id,
                 title = it.name,
-                subtitle = it.name,
-                description = it.name,
+                subtitle = it.owners.joinToString(", "),
                 cover = it.logo.toImageHolder(),
                 streamables = allStreams.filter { ch -> ch.channel == it.id }
                     .mapIndexed { idx, ch -> Streamable.server(ch.url, idx, ch.quality) }
