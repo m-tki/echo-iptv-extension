@@ -30,11 +30,18 @@ data class Country(
 )
 
 @Serializable
+data class Category(
+    val id: String,
+    val name: String,
+)
+
+@Serializable
 data class Channel(
     val id: String,
     val name: String,
     val owners: List<String>,
     val country: String,
+    val categories: List<String>,
     @SerialName("is_nsfw")
     val isNsfw: Boolean,
     val logo: String,
@@ -60,6 +67,7 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, SearchFeedCl
     private val channelsLink = "https://iptv-org.github.io/api/channels.json"
     private val streamsLink = "https://iptv-org.github.io/api/streams.json"
     private val countriesLink = "https://iptv-org.github.io/api/countries.json"
+    private val categoriesLink = "https://iptv-org.github.io/api/categories.json"
 
     private val client by lazy { OkHttpClient.Builder().build() }
     private suspend fun call(url: String) = client.newCall(
@@ -74,18 +82,35 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, SearchFeedCl
 
     private suspend fun String.toShelf(countryCode: String): List<Shelf> {
         val allStreams = call(streamsLink).toData<List<Stream>>()
-        return this.toData<List<Channel>>().filter {
-                !it.isNsfw && it.country == countryCode
-            }.map {
-                Track(
-                    id = it.id,
-                    title = it.name,
-                    subtitle = it.owners.joinToString(", "),
-                    cover = it.logo.toImageHolder(),
-                    streamables = allStreams.filter { ch -> ch.channel == it.id }
-                        .mapIndexed { idx, ch -> Streamable.server(ch.url, idx, ch.quality) }
-                ).toMediaItem().toShelf()
-            }
+        val allCategories = call(categoriesLink).toData<List<Category>>()
+        val allChannels = this.toData<List<Channel>>().filter {
+            !it.isNsfw && it.country == countryCode
+        }
+        val allCategoriesFiltered = allCategories.filter { allChannels.any { ch ->
+            ch.categories.any { id -> id == it.id } } }.toMutableList()
+        if (allChannels.any { it.categories.isEmpty() }) {
+            allCategoriesFiltered.add(Category(name = "Other", id = "other"))
+        }
+        return allCategoriesFiltered.map { category ->
+            Shelf.Category(
+                title = category.name,
+                items = PagedData.Single {
+                    allChannels.filter {
+                        it.categories.any { id -> id == category.id } ||
+                                (it.categories.isEmpty() && category.id == "other")
+                    }.map {
+                        Track(
+                            id = it.id,
+                            title = it.name,
+                            subtitle = it.owners.joinToString(", "),
+                            cover = it.logo.toImageHolder(),
+                            streamables = allStreams.filter { ch -> ch.channel == it.id }
+                                .mapIndexed { idx, ch -> Streamable.server(ch.url, idx, ch.quality) }
+                        ).toMediaItem().toShelf()
+                    }
+                }
+            )
+        }
     }
 
     override fun getHomeFeed(tab: Tab?) = PagedData.Single {
