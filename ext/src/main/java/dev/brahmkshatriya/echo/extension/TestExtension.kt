@@ -16,7 +16,7 @@ import dev.brahmkshatriya.echo.common.models.Feed.Companion.toFeed
 import dev.brahmkshatriya.echo.common.models.Streamable.Source.Companion.toSource
 import dev.brahmkshatriya.echo.common.helpers.PagedData
 import dev.brahmkshatriya.echo.common.helpers.ContinuationCallback.Companion.await
-import dev.brahmkshatriya.echo.common.settings.Setting
+import dev.brahmkshatriya.echo.common.settings.SettingSwitch
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import kotlinx.serialization.Serializable
@@ -33,6 +33,7 @@ data class Channel(
     val id: String,
     val name: String,
     val country: String,
+    val is_nsfw: Boolean,
     val logo: String,
 )
 
@@ -46,7 +47,17 @@ data class Stream(
 class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, SearchFeedClient {
     override suspend fun onExtensionSelected() {}
 
-    override val settingItems get() = emptyList<Setting>()
+    override val settingItems
+        get() = listOf(
+            SettingSwitch(
+                "Show NSFW",
+                "show_nsfw",
+                "Whether to show NSFW streams",
+                showNsfw
+            )
+        )
+
+    private val showNsfw get() = setting.getBoolean("show_nsfw") ?: false
 
     private lateinit var setting: Settings
     override fun setSettings(settings: Settings) {
@@ -71,7 +82,7 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, SearchFeedCl
     private suspend fun String.toShelf(countryCode: String): List<Shelf> {
         val allStreams = call(streamsLink).toData<List<Stream>>()
         return this.toData<List<Channel>>().filter {
-                it.country == countryCode
+                (showNsfw || !it.is_nsfw) && it.country == countryCode
             }.map {
                 Track(
                     id = it.id,
@@ -119,7 +130,7 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, SearchFeedCl
     private suspend fun String.toSearchShelf(query: String): List<Shelf> {
         val allStreams = call(streamsLink).toData<List<Stream>>()
         return this.toData<List<Channel>>().filter {
-            it.name.contains(query, true)
+            (showNsfw || !it.is_nsfw) && it.name.contains(query, true)
         }.take(100).map {
             Track(
                 id = it.id,
