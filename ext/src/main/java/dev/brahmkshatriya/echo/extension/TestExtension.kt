@@ -16,7 +16,7 @@ import dev.brahmkshatriya.echo.common.models.Feed.Companion.toFeed
 import dev.brahmkshatriya.echo.common.models.Streamable.Source.Companion.toSource
 import dev.brahmkshatriya.echo.common.helpers.PagedData
 import dev.brahmkshatriya.echo.common.helpers.ContinuationCallback.Companion.await
-import dev.brahmkshatriya.echo.common.settings.Setting
+import dev.brahmkshatriya.echo.common.settings.SettingTextInput
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import kotlinx.serialization.Serializable
@@ -57,7 +57,17 @@ data class Stream(
 class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, SearchFeedClient {
     override suspend fun onExtensionSelected() {}
 
-    override val settingItems get() = emptyList<Setting>()
+    override val settingItems
+        get() = listOf(
+            SettingTextInput(
+                "Default Country",
+                "default_country",
+                "Set a default country to be displayed as the first tab on the home page",
+                defaultCountry
+            )
+        )
+
+    private val defaultCountry get() = setting.getString("default_country")
 
     private lateinit var setting: Settings
     override fun setSettings(settings: Settings) {
@@ -118,7 +128,9 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, SearchFeedCl
     }.toFeed()
 
     override suspend fun getHomeTabs(): List<Tab> {
-        return call(countriesLink).toData<List<Country>>().map {
+        val countries = call(countriesLink).toData<List<Country>>()
+        val (default, others) = countries.partition { it.name.equals(defaultCountry, true)}
+        return (default + others).map {
             Tab(title = it.name, id = it.code)
         }
     }
