@@ -16,7 +16,7 @@ import dev.brahmkshatriya.echo.common.models.Feed.Companion.toFeed
 import dev.brahmkshatriya.echo.common.models.Streamable.Source.Companion.toSource
 import dev.brahmkshatriya.echo.common.helpers.PagedData
 import dev.brahmkshatriya.echo.common.helpers.ContinuationCallback.Companion.await
-import dev.brahmkshatriya.echo.common.settings.SettingTextInput
+import dev.brahmkshatriya.echo.common.settings.SettingList
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import kotlinx.serialization.Serializable
@@ -57,17 +57,25 @@ data class Stream(
 class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, SearchFeedClient {
     override suspend fun onExtensionSelected() {}
 
+    override suspend fun onInitialize() {
+        if (setting.getBoolean("countries_initialized") == null)  {
+            setting.putString("countries_serialized", call(countriesLink))
+            setting.putBoolean("countries_initialized", true)
+        }
+    }
+
     override val settingItems
         get() = listOf(
-            SettingTextInput(
+            SettingList(
                 "Default Country",
-                "default_country",
-                "Set a default country to be displayed as the first tab on the home page",
-                defaultCountry
+                "default_country_code",
+                "Select a default country to be displayed as the first tab on the home page",
+                setting.getString("countries_serialized")!!.toData<List<Country>>().map { it.name },
+                setting.getString("countries_serialized")!!.toData<List<Country>>().map { it.code }
             )
         )
 
-    private val defaultCountry get() = setting.getString("default_country")
+    private val defaultCountryCode get() = setting.getString("default_country_code")
 
     private lateinit var setting: Settings
     override fun setSettings(settings: Settings) {
@@ -129,7 +137,7 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, SearchFeedCl
 
     override suspend fun getHomeTabs(): List<Tab> {
         val countries = call(countriesLink).toData<List<Country>>()
-        val (default, others) = countries.partition { it.name.equals(defaultCountry, true)}
+        val (default, others) = countries.partition { it.code == defaultCountryCode }
         return (default + others).map {
             Tab(title = it.name, id = it.code)
         }
