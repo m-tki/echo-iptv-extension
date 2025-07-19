@@ -107,7 +107,7 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, SearchFeedCl
         val allCategoriesFiltered = allCategories.filter { allChannels.any { ch ->
             ch.categories.any { id -> id == it.id } } }.toMutableList()
         if (allChannels.any { it.categories.isEmpty() }) {
-            allCategoriesFiltered.add(Category(name = "Other", id = "other"))
+            allCategoriesFiltered.add(Category(name = "Unknown", id = "unknown"))
         }
         return allCategoriesFiltered.map { category ->
             Shelf.Category(
@@ -115,7 +115,7 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, SearchFeedCl
                 items = PagedData.Single {
                     allChannels.filter {
                         it.categories.any { id -> id == category.id } ||
-                                (it.categories.isEmpty() && category.id == "other")
+                                (it.categories.isEmpty() && category.id == "unknown")
                     }.map {
                         Track(
                             id = it.id,
