@@ -5,17 +5,15 @@ import dev.brahmkshatriya.echo.common.clients.HomeFeedClient
 import dev.brahmkshatriya.echo.common.clients.TrackClient
 import dev.brahmkshatriya.echo.common.clients.SearchFeedClient
 import dev.brahmkshatriya.echo.common.settings.Settings
-import dev.brahmkshatriya.echo.common.models.EchoMediaItem.Companion.toMediaItem
 import dev.brahmkshatriya.echo.common.models.ImageHolder.Companion.toImageHolder
 import dev.brahmkshatriya.echo.common.models.Shelf
 import dev.brahmkshatriya.echo.common.models.Streamable
-import dev.brahmkshatriya.echo.common.models.Tab
 import dev.brahmkshatriya.echo.common.models.Track
-import dev.brahmkshatriya.echo.common.models.QuickSearchItem
 import dev.brahmkshatriya.echo.common.models.Feed.Companion.toFeed
 import dev.brahmkshatriya.echo.common.models.Streamable.Source.Companion.toSource
 import dev.brahmkshatriya.echo.common.helpers.PagedData
 import dev.brahmkshatriya.echo.common.helpers.ContinuationCallback.Companion.await
+import dev.brahmkshatriya.echo.common.models.Feed
 import dev.brahmkshatriya.echo.common.settings.SettingList
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -44,7 +42,6 @@ data class Channel(
     val categories: List<String>,
     @SerialName("is_nsfw")
     val isNsfw: Boolean,
-    val logo: String,
 )
 
 @Serializable
@@ -52,6 +49,12 @@ data class Stream(
     val channel: String? = null,
     val url: String,
     val quality: String? = null,
+)
+
+@Serializable
+data class Logo(
+    val channel: String,
+    val url: String,
 )
 
 class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, SearchFeedClient {
@@ -64,16 +67,15 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, SearchFeedCl
         }
     }
 
-    override val settingItems
-        get() = listOf(
-            SettingList(
-                "Default Country",
-                "default_country_code",
-                "Select a default country to be displayed as the first tab on the home page",
-                setting.getString("countries_serialized")!!.toData<List<Country>>().map { it.name },
-                setting.getString("countries_serialized")!!.toData<List<Country>>().map { it.code }
-            )
+    override suspend fun getSettingItems() = listOf(
+        SettingList(
+            "Default Country",
+            "default_country_code",
+            "Select a default country to be displayed as the first tab on the home page",
+            setting.getString("countries_serialized")!!.toData<List<Country>>().map { it.name },
+            setting.getString("countries_serialized")!!.toData<List<Country>>().map { it.code }
         )
+    )
 
     private val defaultCountryCode get() = setting.getString("default_country_code")
 
@@ -86,6 +88,7 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, SearchFeedCl
     private val streamsLink = "https://iptv-org.github.io/api/streams.json"
     private val countriesLink = "https://iptv-org.github.io/api/countries.json"
     private val categoriesLink = "https://iptv-org.github.io/api/categories.json"
+    private val logosLink = "https://iptv-org.github.io/api/logos.json"
 
     private val client by lazy { OkHttpClient.Builder().build() }
     private suspend fun call(url: String) = client.newCall(
@@ -98,8 +101,22 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, SearchFeedCl
             throw IllegalStateException("Failed to parse JSON: $this", it)
         }
 
+    private fun getTracks(allChannels: List<Channel>, allStreams: List<Stream>, allLogos: List<Logo>, categoryId: String): List<Shelf> =
+        allChannels.filter {
+            it.categories.any { id -> id == categoryId } ||
+                    (it.categories.isEmpty() && categoryId == "unknown")
+        }.map {
+            Track(
+                it.id,
+                it.name,
+                cover = allLogos.firstOrNull { logo -> it.id == logo.channel }?.url?.toImageHolder(),
+                subtitle = it.owners.joinToString(", "),
+                streamables = allStreams.filter { ch -> ch.channel == it.id }
+                    .mapIndexed { idx, ch -> Streamable.server(ch.url, idx, ch.quality) }
+            ).toShelf()
+        }
+
     private suspend fun String.toShelf(countryCode: String): List<Shelf> {
-        val allStreams = call(streamsLink).toData<List<Stream>>()
         val allCategories = call(categoriesLink).toData<List<Category>>()
         val allChannels = this.toData<List<Channel>>().filter {
             !it.isNsfw && it.country == countryCode
@@ -109,81 +126,82 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, SearchFeedCl
         if (allChannels.any { it.categories.isEmpty() }) {
             allCategoriesFiltered.add(Category(name = "Unknown", id = "unknown"))
         }
-        return allCategoriesFiltered.map { category ->
-            Shelf.Category(
-                title = category.name,
-                items = PagedData.Single {
-                    allChannels.filter {
-                        it.categories.any { id -> id == category.id } ||
-                                (it.categories.isEmpty() && category.id == "unknown")
-                    }.map {
-                        Track(
-                            id = it.id,
-                            title = it.name,
-                            subtitle = it.owners.joinToString(", "),
-                            cover = it.logo.toImageHolder(),
-                            streamables = allStreams.filter { ch -> ch.channel == it.id }
-                                .mapIndexed { idx, ch -> Streamable.server(ch.url, idx, ch.quality) }
-                        ).toMediaItem().toShelf()
-                    }
-                }
+        val allStreams = call(streamsLink).toData<List<Stream>>()
+        val allLogos = call(logosLink).toData<List<Logo>>()
+        return listOf(
+            Shelf.Lists.Categories(
+                "categories",
+                "Categories",
+                allCategoriesFiltered.map { category ->
+                    Shelf.Category(
+                        id = category.id,
+                        title = category.name,
+                        PagedData.Single {
+                            getTracks(allChannels, allStreams, allLogos, category.id)
+                        }.toFeed()
+                    )
+                },
+                type = Shelf.Lists.Type.Grid
             )
-        }
+        )
     }
 
-    override fun getHomeFeed(tab: Tab?) = PagedData.Single {
-        call(channelsLink).toShelf(tab!!.id)
-    }.toFeed()
-
-    override suspend fun getHomeTabs(): List<Tab> {
+    override suspend fun loadHomeFeed(): Feed<Shelf> {
         val countries = call(countriesLink).toData<List<Country>>()
         val (default, others) = countries.partition { it.code == defaultCountryCode }
-        return (default + others).map {
-            Tab(title = it.name, id = it.code)
-        }
+        return listOf(
+            Shelf.Lists.Categories(
+                "countries",
+                "Countries",
+                (default + others).map {
+                    Shelf.Category(
+                        it.code,
+                        it.name,
+                        PagedData.Single {
+                            call(channelsLink).toShelf(it.code)
+                        }.toFeed()
+                    )
+                },
+                type = Shelf.Lists.Type.Grid
+            )
+        ).toFeed()
     }
 
-    override fun getShelves(track: Track): PagedData<Shelf> {
-        return PagedData.empty()
-    }
+    override suspend fun loadFeed(track: Track): Feed<Shelf>? = null
 
     override suspend fun loadStreamableMedia(
         streamable: Streamable,
         isDownload: Boolean
     ): Streamable.Media {
         return Streamable.Media.Server(
-            listOf(streamable.id.toSource(type = Streamable.SourceType.HLS, isVideo = true)),
+            listOf(streamable.id.toSource(
+                type = Streamable.SourceType.HLS,
+                isVideo = true,
+                isLive = true
+            )),
             false
         )
     }
 
-    override suspend fun loadTrack(track: Track) = track
-
-    override suspend fun deleteQuickSearch(item: QuickSearchItem) {}
-    override suspend fun quickSearch(query: String): List<QuickSearchItem> {
-        return emptyList()
-    }
+    override suspend fun loadTrack(track: Track, isDownload: Boolean): Track = track
 
     private suspend fun String.toSearchShelf(query: String): List<Shelf> {
         val allStreams = call(streamsLink).toData<List<Stream>>()
+        val allLogos = call(logosLink).toData<List<Logo>>()
         return this.toData<List<Channel>>().filter {
             !it.isNsfw && it.name.contains(query, true)
         }.take(100).map {
             Track(
-                id = it.id,
-                title = it.name,
+                it.id,
+                it.name,
+                cover = allLogos.firstOrNull { logo -> it.id == logo.channel }?.url?.toImageHolder(),
                 subtitle = it.owners.joinToString(", "),
-                cover = it.logo.toImageHolder(),
                 streamables = allStreams.filter { ch -> ch.channel == it.id }
                     .mapIndexed { idx, ch -> Streamable.server(ch.url, idx, ch.quality) }
-            ).toMediaItem().toShelf()
+            ).toShelf()
         }
     }
 
-    override fun searchFeed(query: String, tab: Tab?) =
-        PagedData.Single {
-            call(channelsLink).toSearchShelf(query)
-        }.toFeed()
-
-    override suspend fun searchTabs(query: String) = emptyList<Tab>()
+    override suspend fun loadSearchFeed(query: String): Feed<Shelf> =
+        call(channelsLink).toSearchShelf(query).toFeed()
 }
