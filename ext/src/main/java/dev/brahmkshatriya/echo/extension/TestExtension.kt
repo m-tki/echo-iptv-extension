@@ -15,6 +15,8 @@ import dev.brahmkshatriya.echo.common.helpers.PagedData
 import dev.brahmkshatriya.echo.common.helpers.ContinuationCallback.Companion.await
 import dev.brahmkshatriya.echo.common.models.Feed
 import dev.brahmkshatriya.echo.common.settings.SettingList
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import kotlinx.serialization.Serializable
@@ -91,9 +93,11 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, SearchFeedCl
     private val logosLink = "https://iptv-org.github.io/api/logos.json"
 
     private val client by lazy { OkHttpClient.Builder().build() }
-    private suspend fun call(url: String) = client.newCall(
-        Request.Builder().url(url).build()
-    ).await().body.string()
+    private suspend fun call(url: String): String = withContext(Dispatchers.IO) {
+        client.newCall(
+            Request.Builder().url(url).build()
+        ).await().body.string()
+    }
 
     private val json by lazy { Json { ignoreUnknownKeys = true } }
     private inline fun <reified T> String.toData() =
@@ -106,13 +110,19 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, SearchFeedCl
             it.categories.any { id -> id == categoryId } ||
                     (it.categories.isEmpty() && categoryId == "unknown")
         }.map {
+            val isAvailable = allStreams.any { ch -> ch.channel == it.id }
+            val subtitle = it.owners.joinToString(", ")
             Track(
                 it.id,
                 it.name,
                 cover = allLogos.firstOrNull { logo -> it.id == logo.channel }?.url?.toImageHolder(),
-                subtitle = it.owners.joinToString(", "),
+                subtitle = if (isAvailable) subtitle else {
+                    if (subtitle.isEmpty()) "Not Supported" else "Not Supported - $subtitle"
+                },
                 streamables = allStreams.filter { ch -> ch.channel == it.id }
-                    .mapIndexed { idx, ch -> Streamable.server(ch.url, idx, ch.quality) }
+                    .mapIndexed { idx, ch -> Streamable.server(ch.url, idx, ch.quality) },
+                isPlayable = if (isAvailable) Track.Playable.Yes else
+                    Track.Playable.No("No Available Streams")
             ).toShelf()
         }
 
