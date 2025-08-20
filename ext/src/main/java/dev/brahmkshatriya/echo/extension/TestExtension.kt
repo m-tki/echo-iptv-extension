@@ -105,25 +105,29 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, SearchFeedCl
             throw IllegalStateException("Failed to parse JSON: $this", it)
         }
 
+    private fun createTrack(channel: Channel, allStreams: List<Stream>, allLogos: List<Logo>): Shelf {
+        val isAvailable = allStreams.any { ch -> ch.channel == channel.id }
+        val subtitle = channel.owners.joinToString(", ")
+        return Track(
+            channel.id,
+            channel.name,
+            cover = allLogos.firstOrNull { logo -> channel.id == logo.channel }?.url?.toImageHolder(),
+            subtitle = if (isAvailable) subtitle else {
+                if (subtitle.isEmpty()) "Not Supported" else "Not Supported - $subtitle"
+            },
+            streamables = allStreams.filter { ch -> ch.channel == channel.id }
+                .mapIndexed { idx, ch -> Streamable.server(ch.url, idx, ch.quality) },
+            isPlayable = if (isAvailable) Track.Playable.Yes else
+                Track.Playable.No("No Available Streams")
+        ).toShelf()
+    }
+
     private fun getTracks(allChannels: List<Channel>, allStreams: List<Stream>, allLogos: List<Logo>, categoryId: String): List<Shelf> =
         allChannels.filter {
             it.categories.any { id -> id == categoryId } ||
                     (it.categories.isEmpty() && categoryId == "unknown")
         }.map {
-            val isAvailable = allStreams.any { ch -> ch.channel == it.id }
-            val subtitle = it.owners.joinToString(", ")
-            Track(
-                it.id,
-                it.name,
-                cover = allLogos.firstOrNull { logo -> it.id == logo.channel }?.url?.toImageHolder(),
-                subtitle = if (isAvailable) subtitle else {
-                    if (subtitle.isEmpty()) "Not Supported" else "Not Supported - $subtitle"
-                },
-                streamables = allStreams.filter { ch -> ch.channel == it.id }
-                    .mapIndexed { idx, ch -> Streamable.server(ch.url, idx, ch.quality) },
-                isPlayable = if (isAvailable) Track.Playable.Yes else
-                    Track.Playable.No("No Available Streams")
-            ).toShelf()
+            createTrack(it, allStreams, allLogos)
         }
 
     private suspend fun String.toShelf(countryCode: String): List<Shelf> {
@@ -201,14 +205,7 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, SearchFeedCl
         return this.toData<List<Channel>>().filter {
             !it.isNsfw && it.name.contains(query, true)
         }.take(100).map {
-            Track(
-                it.id,
-                it.name,
-                cover = allLogos.firstOrNull { logo -> it.id == logo.channel }?.url?.toImageHolder(),
-                subtitle = it.owners.joinToString(", "),
-                streamables = allStreams.filter { ch -> ch.channel == it.id }
-                    .mapIndexed { idx, ch -> Streamable.server(ch.url, idx, ch.quality) }
-            ).toShelf()
+            createTrack(it, allStreams, allLogos)
         }
     }
 
