@@ -116,6 +116,8 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, SearchFeedCl
                 if (subtitle.isEmpty()) "Not Supported" else "Not Supported - $subtitle"
             },
             streamables = allStreams.filter { ch -> ch.channel == channel.id }
+                .sortedBy { if (it.quality.isNullOrEmpty()) 0u else
+                    it.quality.substring(0, it.quality.length - 1).toUIntOrNull() ?: 0u }
                 .mapIndexed { idx, ch -> Streamable.server(ch.url, idx, ch.quality) },
             isPlayable = if (isAvailable) Track.Playable.Yes else
                 Track.Playable.No("No Available Streams")
