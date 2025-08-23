@@ -20,6 +20,7 @@ import dev.brahmkshatriya.echo.common.models.TrackDetails
 import dev.brahmkshatriya.echo.common.providers.GlobalSettingsProvider
 import dev.brahmkshatriya.echo.common.providers.NetworkConnectionProvider
 import dev.brahmkshatriya.echo.common.settings.SettingList
+import dev.brahmkshatriya.echo.common.settings.SettingSwitch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -79,10 +80,17 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
             "Select a default country to be displayed as the first tab on the home page",
             setting.getString("countries_serialized")!!.toData<List<Country>>().map { it.name },
             setting.getString("countries_serialized")!!.toData<List<Country>>().map { it.code }
+        ),
+        SettingSwitch(
+            "Restore Selected Server",
+            "last_selected_server",
+            "Whether to restore last selected server for streams",
+            lastSelectedServer
         )
     )
 
     private val defaultCountryCode get() = setting.getString("default_country_code")
+    private val lastSelectedServer get() = setting.getBoolean("last_selected_server") ?: true
 
     private lateinit var setting: Settings
     private lateinit var globalSetting: Settings
@@ -209,10 +217,16 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
         streamable: Streamable,
         isDownload: Boolean
     ): Streamable.Media {
-        setting.putInt("iptv_org_${streamable.extras["track_id"]}_quality",
-            streamable.extras["index"]?.toIntOrNull())
-        setting.putBoolean("iptv_org_${streamable.extras["track_id"]}_valid",
-            false)
+        if (lastSelectedServer) {
+            setting.putInt(
+                "iptv_org_${streamable.extras["track_id"]}_quality",
+                streamable.extras["index"]?.toIntOrNull()
+            )
+            setting.putBoolean(
+                "iptv_org_${streamable.extras["track_id"]}_valid",
+                false
+            )
+        }
         return Streamable.Media.Server(
             listOf(streamable.id.toSource(
                 type = Streamable.SourceType.HLS,
@@ -270,11 +284,13 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
     }
 
     override suspend fun loadTrack(track: Track, isDownload: Boolean): Track {
-        val quality = setting.getInt("iptv_org_${track.id}_quality")
-        val isValid = setting.getBoolean("iptv_org_${track.id}_valid")
-        if (quality != null && isValid == true) {
-            if (quality in track.streamables.indices) {
-                return selectQuality(track, quality)
+        if (lastSelectedServer) {
+            val quality = setting.getInt("iptv_org_${track.id}_quality")
+            val isValid = setting.getBoolean("iptv_org_${track.id}_valid")
+            if (quality != null && isValid == true) {
+                if (quality in track.streamables.indices) {
+                    return selectQuality(track, quality)
+                }
             }
         }
         return track
@@ -283,7 +299,7 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
     override suspend fun onTrackChanged(details: TrackDetails?) {}
 
     override suspend fun onPlayingStateChanged(details: TrackDetails?, isPlaying: Boolean) {
-        if (details != null && isPlaying)
+        if (lastSelectedServer && details != null && isPlaying)
             setting.putBoolean("iptv_org_${getTrackId(details.track.id)}_valid", true)
     }
 
