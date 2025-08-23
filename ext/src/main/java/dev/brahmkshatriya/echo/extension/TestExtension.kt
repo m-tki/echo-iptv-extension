@@ -109,6 +109,8 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
     val unmeteredStreamQuality = "unmetered_stream_quality"
     val streamQualities = arrayOf("highest", "medium", "lowest")
 
+    var trackQuality: Int? = null
+
     private val channelsLink = "https://iptv-org.github.io/api/channels.json"
     private val streamsLink = "https://iptv-org.github.io/api/streams.json"
     private val countriesLink = "https://iptv-org.github.io/api/countries.json"
@@ -145,7 +147,7 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
                 .sortedBy { if (it.quality.isNullOrEmpty()) 0u else
                     it.quality.substring(0, it.quality.length - 1).toUIntOrNull() ?: 0u }
                 .mapIndexed { idx, ch -> Streamable.server(ch.url, idx, ch.quality,
-                    mapOf("track_id" to trackId, "index" to idx.toString())) },
+                    mapOf("index" to idx.toString())) },
             isPlayable = if (isAvailable) Track.Playable.Yes else
                 Track.Playable.No("No Available Streams")
         ).toShelf()
@@ -218,14 +220,7 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
         isDownload: Boolean
     ): Streamable.Media {
         if (lastSelectedServer) {
-            setting.putInt(
-                "iptv_org_${streamable.extras["track_id"]}_quality",
-                streamable.extras["index"]?.toIntOrNull()
-            )
-            setting.putBoolean(
-                "iptv_org_${streamable.extras["track_id"]}_valid",
-                false
-            )
+            trackQuality = streamable.extras["index"]?.toIntOrNull()
         }
         return Streamable.Media.Server(
             listOf(streamable.id.toSource(
@@ -286,11 +281,8 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
     override suspend fun loadTrack(track: Track, isDownload: Boolean): Track {
         if (lastSelectedServer) {
             val quality = setting.getInt("iptv_org_${track.id}_quality")
-            val isValid = setting.getBoolean("iptv_org_${track.id}_valid")
-            if (quality != null && isValid == true) {
-                if (quality in track.streamables.indices) {
-                    return selectQuality(track, quality)
-                }
+            if (quality != null && quality in track.streamables.indices) {
+                return selectQuality(track, quality)
             }
         }
         return track
@@ -299,8 +291,10 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
     override suspend fun onTrackChanged(details: TrackDetails?) {}
 
     override suspend fun onPlayingStateChanged(details: TrackDetails?, isPlaying: Boolean) {
-        if (lastSelectedServer && details != null && isPlaying)
-            setting.putBoolean("iptv_org_${getTrackId(details.track.id)}_valid", true)
+        if (lastSelectedServer && details != null && isPlaying) {
+            setting.putInt("iptv_org_${getTrackId(details.track.id)}_quality", trackQuality)
+            trackQuality = null
+        }
     }
 
     private suspend fun String.toSearchShelf(query: String): List<Shelf> {
