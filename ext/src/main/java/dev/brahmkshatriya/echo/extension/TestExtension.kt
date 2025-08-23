@@ -4,6 +4,7 @@ import dev.brahmkshatriya.echo.common.clients.ExtensionClient
 import dev.brahmkshatriya.echo.common.clients.HomeFeedClient
 import dev.brahmkshatriya.echo.common.clients.TrackClient
 import dev.brahmkshatriya.echo.common.clients.SearchFeedClient
+import dev.brahmkshatriya.echo.common.clients.TrackerClient
 import dev.brahmkshatriya.echo.common.settings.Settings
 import dev.brahmkshatriya.echo.common.models.ImageHolder.Companion.toImageHolder
 import dev.brahmkshatriya.echo.common.models.Shelf
@@ -14,6 +15,10 @@ import dev.brahmkshatriya.echo.common.models.Streamable.Source.Companion.toSourc
 import dev.brahmkshatriya.echo.common.helpers.PagedData
 import dev.brahmkshatriya.echo.common.helpers.ContinuationCallback.Companion.await
 import dev.brahmkshatriya.echo.common.models.Feed
+import dev.brahmkshatriya.echo.common.models.NetworkConnection
+import dev.brahmkshatriya.echo.common.models.TrackDetails
+import dev.brahmkshatriya.echo.common.providers.GlobalSettingsProvider
+import dev.brahmkshatriya.echo.common.providers.NetworkConnectionProvider
 import dev.brahmkshatriya.echo.common.settings.SettingList
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -58,10 +63,8 @@ data class Logo(
     val channel: String,
     val url: String,
 )
-
-class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, SearchFeedClient {
-    override suspend fun onExtensionSelected() {}
-
+class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeedClient,
+    GlobalSettingsProvider, NetworkConnectionProvider, TrackerClient {
     override suspend fun onInitialize() {
         if (setting.getBoolean("countries_initialized") == null)  {
             setting.putString("countries_serialized", call(countriesLink))
@@ -82,9 +85,21 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, SearchFeedCl
     private val defaultCountryCode get() = setting.getString("default_country_code")
 
     private lateinit var setting: Settings
+    private lateinit var globalSetting: Settings
+    private lateinit var currentNetworkConnection: NetworkConnection
     override fun setSettings(settings: Settings) {
         setting = settings
     }
+    override fun setGlobalSettings(globalSettings: Settings) {
+        globalSetting = globalSettings
+    }
+    override fun setNetworkConnection(networkConnection: NetworkConnection) {
+        currentNetworkConnection = networkConnection
+    }
+
+    val streamQuality = "stream_quality"
+    val unmeteredStreamQuality = "unmetered_stream_quality"
+    val streamQualities = arrayOf("highest", "medium", "lowest")
 
     private val channelsLink = "https://iptv-org.github.io/api/channels.json"
     private val streamsLink = "https://iptv-org.github.io/api/streams.json"
@@ -105,11 +120,14 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, SearchFeedCl
             throw IllegalStateException("Failed to parse JSON: $this", it)
         }
 
+    private fun getTrackId(id: String) = id.lowercase()
+
     private fun createTrack(channel: Channel, allStreams: List<Stream>, allLogos: List<Logo>): Shelf {
+        val trackId = getTrackId(channel.id)
         val isAvailable = allStreams.any { ch -> ch.channel == channel.id }
         val subtitle = channel.owners.joinToString(", ")
         return Track(
-            channel.id,
+            trackId,
             channel.name,
             cover = allLogos.firstOrNull { logo -> channel.id == logo.channel }?.url?.toImageHolder(),
             subtitle = if (isAvailable) subtitle else {
@@ -118,13 +136,15 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, SearchFeedCl
             streamables = allStreams.filter { ch -> ch.channel == channel.id }
                 .sortedBy { if (it.quality.isNullOrEmpty()) 0u else
                     it.quality.substring(0, it.quality.length - 1).toUIntOrNull() ?: 0u }
-                .mapIndexed { idx, ch -> Streamable.server(ch.url, idx, ch.quality) },
+                .mapIndexed { idx, ch -> Streamable.server(ch.url, idx, ch.quality,
+                    mapOf("track_id" to trackId, "index" to idx.toString())) },
             isPlayable = if (isAvailable) Track.Playable.Yes else
                 Track.Playable.No("No Available Streams")
         ).toShelf()
     }
 
-    private fun getTracks(allChannels: List<Channel>, allStreams: List<Stream>, allLogos: List<Logo>, categoryId: String): List<Shelf> =
+    private fun getTracks(allChannels: List<Channel>, allStreams: List<Stream>, allLogos: List<Logo>,
+                          categoryId: String): List<Shelf> =
         allChannels.filter {
             it.categories.any { id -> id == categoryId } ||
                     (it.categories.isEmpty() && categoryId == "unknown")
@@ -189,6 +209,10 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, SearchFeedCl
         streamable: Streamable,
         isDownload: Boolean
     ): Streamable.Media {
+        setting.putInt("iptv_org_${streamable.extras["track_id"]}_quality",
+            streamable.extras["index"]?.toIntOrNull())
+        setting.putBoolean("iptv_org_${streamable.extras["track_id"]}_valid",
+            false)
         return Streamable.Media.Server(
             listOf(streamable.id.toSource(
                 type = Streamable.SourceType.HLS,
@@ -199,7 +223,69 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, SearchFeedCl
         )
     }
 
-    override suspend fun loadTrack(track: Track, isDownload: Boolean): Track = track
+    private fun getStreamableQuality(idx: Int, oldSelectedIdx: Int, newSelectedIdx: Int): Int {
+        return when {
+            idx == oldSelectedIdx -> newSelectedIdx
+            oldSelectedIdx < newSelectedIdx -> when {
+                idx in (oldSelectedIdx + 1)..newSelectedIdx -> idx - 1
+                else -> idx
+            }
+            else -> when {
+                idx in newSelectedIdx until oldSelectedIdx -> idx + 1
+                else -> idx
+            }
+        }
+    }
+
+    private fun selectQuality(track: Track, selectedQuality: Int): Track {
+        val extQuality = setting.getString(streamQuality)
+        val globalQuality = globalSetting.getString(streamQuality)
+        val globalUnmeteredQuality = globalSetting.getString(unmeteredStreamQuality)
+        val quality = if (extQuality in streamQualities) extQuality
+            else if (currentNetworkConnection == NetworkConnection.Unmetered &&
+                globalUnmeteredQuality in streamQualities) globalUnmeteredQuality
+            else if (globalQuality in streamQualities) globalQuality
+            else streamQualities[1]
+        val newIdx = when (quality) {
+            streamQualities[0] -> track.streamables.size - 1
+            streamQualities[1] -> track.streamables.size / 2
+            else -> 0
+        }
+        val streams = track.streamables.mapIndexed { idx, stream ->
+            Streamable.server(
+                stream.id,
+                getStreamableQuality(idx, selectedQuality, newIdx),
+                stream.title,
+                stream.extras
+            )
+        }
+        return Track(
+            track.id,
+            track.title,
+            cover = track.cover,
+            subtitle = track.subtitle,
+            streamables = streams,
+            isPlayable = track.isPlayable
+        )
+    }
+
+    override suspend fun loadTrack(track: Track, isDownload: Boolean): Track {
+        val quality = setting.getInt("iptv_org_${track.id}_quality")
+        val isValid = setting.getBoolean("iptv_org_${track.id}_valid")
+        if (quality != null && isValid == true) {
+            if (quality in track.streamables.indices) {
+                return selectQuality(track, quality)
+            }
+        }
+        return track
+    }
+
+    override suspend fun onTrackChanged(details: TrackDetails?) {}
+
+    override suspend fun onPlayingStateChanged(details: TrackDetails?, isPlaying: Boolean) {
+        if (details != null && isPlaying)
+            setting.putBoolean("iptv_org_${getTrackId(details.track.id)}_valid", true)
+    }
 
     private suspend fun String.toSearchShelf(query: String): List<Shelf> {
         val allStreams = call(streamsLink).toData<List<Stream>>()
