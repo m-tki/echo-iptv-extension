@@ -4,6 +4,7 @@ import dev.brahmkshatriya.echo.common.clients.ExtensionClient
 import dev.brahmkshatriya.echo.common.clients.HomeFeedClient
 import dev.brahmkshatriya.echo.common.clients.TrackClient
 import dev.brahmkshatriya.echo.common.clients.SearchFeedClient
+import dev.brahmkshatriya.echo.common.clients.SettingsChangeListenerClient
 import dev.brahmkshatriya.echo.common.clients.TrackerClient
 import dev.brahmkshatriya.echo.common.settings.Settings
 import dev.brahmkshatriya.echo.common.models.ImageHolder.Companion.toImageHolder
@@ -21,7 +22,9 @@ import dev.brahmkshatriya.echo.common.models.TrackDetails
 import dev.brahmkshatriya.echo.common.providers.GlobalSettingsProvider
 import dev.brahmkshatriya.echo.common.providers.NetworkConnectionProvider
 import dev.brahmkshatriya.echo.common.settings.SettingList
+import dev.brahmkshatriya.echo.common.settings.SettingMultipleChoice
 import dev.brahmkshatriya.echo.common.settings.SettingSwitch
+import dev.brahmkshatriya.echo.common.settings.SettingTextInput
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -66,8 +69,9 @@ data class Logo(
     val url: String,
 )
 class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeedClient,
-    GlobalSettingsProvider, NetworkConnectionProvider, TrackerClient {
+    GlobalSettingsProvider, NetworkConnectionProvider, TrackerClient, SettingsChangeListenerClient {
     override suspend fun onInitialize() {
+        loadAdditionalPlaylists()
         if (setting.getBoolean("countries_initialized") == null)  {
             setting.putString("countries_serialized", call(iptvOrgCountriesLink))
             setting.putBoolean("countries_initialized", true)
@@ -76,9 +80,9 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
 
     override suspend fun getSettingItems() = listOf(
         SettingList(
-            "Default Country",
+            "Default Country for IPTV-org",
             "default_country_code",
-            "Select a default country to be displayed as the first tab on the home page",
+            "Select a default country to be displayed as the first tab on the home page for IPTV-org",
             setting.getString("countries_serialized")!!.toData<List<Country>>().map { it.name },
             setting.getString("countries_serialized")!!.toData<List<Country>>().map { it.code }
         ),
@@ -87,6 +91,20 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
             "last_selected_server",
             "Whether to restore last selected server for streams",
             lastSelectedServer
+        ),
+        SettingTextInput(
+            "Add Playlists",
+            "add_playlists",
+            "Add playlists in M3U/M3U8 format. To add a specific name to the playlist, " +
+                    "separate the name and playlist link with a comma as in name,link also multiple" +
+                    "playlists can be added separated by semicolons as in name1,link1;name2,link2"
+        ),
+        SettingMultipleChoice(
+            "Remove Playlists",
+            "remove_playlists",
+            "Remove playlists from added playlists",
+            additionalPlaylists.map { it.first },
+            List(additionalPlaylists.size) { it.toString() }
         )
     )
 
@@ -121,7 +139,7 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
     private val iptvOrgCategoriesLink = "https://iptv-org.github.io/api/categories.json"
     private val iptvOrgLogosLink = "https://iptv-org.github.io/api/logos.json"
 
-    private var m3u8Playlists = listOf(
+    private val m3u8Playlists = listOf(
         "DrewLive" to "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/DrewAll.m3u8",
         "PlexTV" to "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/PlexTV.m3u8",
         "PlutoTV" to "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/PlutoTV.m3u8",
@@ -145,6 +163,7 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
         "DaddyLive" to "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/DaddyLive.m3u8",
         "DaddyLiveEvents" to "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/DaddyLiveEvents.m3u8",
     )
+    private val additionalPlaylists = emptyList<Pair<String, String>>().toMutableList()
 
     private val client by lazy { OkHttpClient.Builder().build() }
     private suspend fun call(url: String): String = withContext(Dispatchers.IO) {
@@ -159,43 +178,110 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
             throw IllegalStateException("Failed to parse JSON: $this", it)
         }
 
-    private fun createStream(extId: String, entry: M3U8Entry): Track {
-        return Track(
-            entry.tvgId.lowercase().replace(" ", "_")
-                .replace(",", "_"),
-            entry.title,
-            cover = entry.tvgLogo.toImageHolder(),
-            streamables = listOf(Streamable.server(entry.url, 0,
-                extras = mapOf("ext_id" to extId))),
-        )
+    private fun getPlaylists() = m3u8Playlists + additionalPlaylists
+
+    override suspend fun onSettingsChanged(
+        settings: Settings,
+        key: String?
+    ) {
+        if (key == "add_playlists")
+            addPlaylists()
+        else if (key == "remove_playlists")
+            removeAdditionalPlaylists()
     }
 
-    private fun getStreams(extId: String, entries: List<M3U8Entry>): List<Shelf> {
-        return entries.map {
-            createStream(extId, it).toShelf()
+    private fun addPlaylist(name: String, link: String) {
+        val playlistsFromSetting = setting.getString("additional_playlists")
+        val playlistsFromSettingAppend = if (playlistsFromSetting == null) ""
+            else "$playlistsFromSetting;"
+        setting.putString("additional_playlists",
+            "$playlistsFromSettingAppend$name,$link")
+        additionalPlaylists.add(name to link)
+    }
+
+    private fun addPlaylists() {
+        val playlists = setting.getString("add_playlists")
+        if (playlists != null) {
+            setting.putString("add_playlists", null)
+            var playlistNumber = m3u8Playlists.size + additionalPlaylists.size + 2
+            val splitPlaylists = playlists.trim().split(';')
+            for (playlist in splitPlaylists) {
+                val splitPlaylist = playlist.trim().split(',')
+                when (splitPlaylist.size) {
+                    1 -> addPlaylist("Playlist $playlistNumber", splitPlaylist[0].trim())
+                    2 -> addPlaylist(splitPlaylist[0].trim(), splitPlaylist[1].trim())
+                }
+                playlistNumber++
+            }
         }
     }
 
-    private fun String.toPlaylistShelf(extId: String): List<Shelf> {
+    private fun removeAdditionalPlaylists() {
+        val toRemovePlaylists = setting.getStringSet("remove_playlists")
+        if (toRemovePlaylists != null) {
+            val playlists = setting.getString("additional_playlists").orEmpty()
+            if (playlists.isNotEmpty()) {
+                val toRemoveIndices = toRemovePlaylists.mapNotNull { it.toIntOrNull() }
+                toRemoveIndices.forEach { additionalPlaylists.removeAt(it) }
+                val newPlaylists = playlists.split(';')
+                    .filterIndexed { index, _ -> index !in toRemoveIndices }
+                    .joinToString(";")
+                setting.putString("additional_playlists", newPlaylists)
+            }
+            setting.putStringSet("remove_playlists", null)
+        }
+    }
+
+    private fun loadAdditionalPlaylists() {
+        val playlists = setting.getString("additional_playlists")
+        if (playlists != null) {
+            val splitPlaylists = playlists.split(';')
+            for (playlist in splitPlaylists) {
+                val splitPlaylist = playlist.split(',')
+                additionalPlaylists.add(splitPlaylist[0] to splitPlaylist[1])
+            }
+        }
+    }
+
+    private fun titleToId(title: String) =
+        title.lowercase().replace(" ", "_").replace(",", "_")
+
+    private fun createStream(playlistId: String, entry: M3U8Entry): Track {
+        val trackId = "${playlistId}_${entry.tvgId.lowercase()}_${titleToId(entry.title)}"
+        return Track(
+            trackId,
+            entry.title,
+            cover = entry.tvgLogo.toImageHolder(),
+            streamables = listOf(Streamable.server(entry.url, 0,
+                extras = mapOf("track_id" to trackId))),
+        )
+    }
+
+    private fun getStreams(playlistId: String, entries: List<M3U8Entry>): List<Shelf> {
+        return entries.map {
+            createStream(playlistId, it).toShelf()
+        }
+    }
+
+    private fun String.toPlaylistShelf(playlistId: String): List<Shelf> {
         val parser = M3U8Parser()
         val entries = parser.parse(this)
         if (entries.any { it.groupTitle.isEmpty() } ||
             entries.map { it.groupTitle }.distinct().size == 1) {
-            return getStreams(extId, entries)
+            return getStreams(playlistId, entries)
         }
         else {
             val groups = entries.map { it.groupTitle }.distinct()
             return listOf(
                 Shelf.Lists.Categories(
-                    "categories",
+                    "${playlistId}_categories",
                     "Categories",
                     groups.map { group ->
                         Shelf.Category(
-                            id = group.lowercase().replace(" ", "_")
-                                .replace(",", "_"),
+                            id = titleToId(group),
                             title = group,
                             PagedData.Single {
-                                getStreams(extId, entries.filter { it.groupTitle == group })
+                                getStreams(playlistId, entries.filter { it.groupTitle == group })
                             }.toFeed()
                         )
                     },
@@ -252,7 +338,7 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
         val allLogos = call(iptvOrgLogosLink).toData<List<Logo>>()
         return listOf(
             Shelf.Lists.Categories(
-                "categories",
+                "iptv_org_categories",
                 "Categories",
                 allCategoriesFiltered.map { category ->
                     Shelf.Category(
@@ -273,7 +359,7 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
         val (default, others) = countries.partition { it.code == defaultCountryCode }
         return listOf(
             Shelf.Lists.Categories(
-                "countries",
+                "iptv_org_countries",
                 "Countries",
                 (default + others).map {
                     Shelf.Category(
@@ -290,6 +376,8 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
     }
 
     override suspend fun loadHomeFeed(): Feed<Shelf> {
+        addPlaylists()
+        removeAdditionalPlaylists()
         val iptvOrgPlaylist = Shelf.Category(
             iptvOrgId,
             iptvOrgName,
@@ -301,12 +389,12 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
             Shelf.Lists.Categories(
                 "playlists",
                 "Playlists",
-                listOf(iptvOrgPlaylist) + m3u8Playlists.map {
+                listOf(iptvOrgPlaylist) + getPlaylists().map {
                     Shelf.Category(
                         it.first.lowercase(),
                         it.first,
                         PagedData.Single {
-                            call(it.second).toPlaylistShelf(it.first.lowercase())
+                            call(it.second).toPlaylistShelf(titleToId(it.first))
                         }.toFeed()
                     )
                 },
@@ -317,24 +405,49 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
 
     override suspend fun loadFeed(track: Track): Feed<Shelf>? = null
 
-    private fun urlExtension(url: String, ext: String) =
-        url.endsWith(".$ext", true) ||
-                url.substringBefore('?')
-                    .endsWith(".$ext", true)
-
     override suspend fun loadStreamableMedia(
         streamable: Streamable,
         isDownload: Boolean
     ): Streamable.Media {
-        if (lastSelectedServer && streamable.extras["index"] != null) {
-            trackQuality = streamable.extras["index"]?.toIntOrNull()
+        val trackId = streamable.extras["track_id"]
+        val streamQuality = streamable.extras["index"]
+        if (lastSelectedServer && streamQuality != null) {
+            trackQuality = streamQuality.toIntOrNull()
         }
-        val type = if (urlExtension(streamable.id, "ts") ||
-            (streamable.extras["ext_id"] == "ariaplus" && !urlExtension(streamable.id, "m3u8")))
-            Streamable.SourceType.Progressive else Streamable.SourceType.HLS
+        val streamType = if (trackId == null) {
+            Streamable.SourceType.HLS
+        }
+        else {
+            when {
+                StreamFormatByExtension.isHlsByExtension(streamable.id) ->
+                    Streamable.SourceType.HLS
+                StreamFormatByExtension.isDashByExtension(streamable.id) ->
+                    Streamable.SourceType.DASH
+                StreamFormatByExtension.isTransportStreamByExtension(streamable.id) ->
+                    Streamable.SourceType.Progressive
+                else -> {
+                    val typeFromSetting = setting.getString(trackId)
+                    val type = if (typeFromSetting != null) {
+                        typeFromSetting
+                    }
+                    else {
+                        val format = StreamFormat(client)
+                            .detectStreamFormat(streamable.id)
+                            .lowercase()
+                        setting.putString(trackId, format)
+                        format
+                    }
+                    when (type) {
+                        "hls" -> Streamable.SourceType.HLS
+                        "dash" -> Streamable.SourceType.DASH
+                        else -> Streamable.SourceType.Progressive
+                    }
+                }
+            }
+        }
         return Streamable.Media.Server(
             listOf(streamable.id.toSource(
-                type = type,
+                type = streamType,
                 isVideo = true,
                 isLive = true
             )),
@@ -418,32 +531,40 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
         }
     }
 
-    private fun String.toPlaylistSearch(extId: String,
+    private fun String.toPlaylistSearch(playlistId: String,
                                         parser: M3U8Parser, query: String): List<EchoMediaItem> {
         val entries = parser.parse(this)
         return entries.filter {
             it.title.contains(query, true)
         }.take(100).map {
-            createStream(extId, it)
+            createStream(playlistId, it)
         }
     }
 
     private suspend fun sortSearchShelf(query: String): List<Shelf> {
         val parser = M3U8Parser()
-        val playlistItems = m3u8Playlists.mapNotNull { playlist ->
-            val items = call(playlist.second)
-                .toPlaylistSearch(playlist.first.lowercase(), parser, query)
+        val playlistItems = getPlaylists().mapNotNull { playlist ->
+            val items = try {
+                call(playlist.second)
+                    .toPlaylistSearch(titleToId(playlist.first), parser, query)
+            } catch (_: Exception) {
+                emptyList()
+            }
             Shelf.Lists.Items(
-                "search_${playlist.first.lowercase()}",
+                "${titleToId(playlist.first)}_search",
                 playlist.first,
                 items.take(12),
                 more = items.takeIf { items.size > 12 }?.map { it.toShelf() }?.toFeed()
             ).takeUnless { items.isEmpty() }
         }
-        val iptvOrgSearch = call(iptvOrgChannelsLink).toIptvOrgSearch(query)
+        val iptvOrgSearch = try {
+            call(iptvOrgChannelsLink).toIptvOrgSearch(query)
+        } catch (_: Exception) {
+            emptyList()
+        }
         return listOfNotNull(
             Shelf.Lists.Items(
-                "search_${iptvOrgId}",
+                "${iptvOrgId}_search",
                 iptvOrgName,
                 iptvOrgSearch.take(12),
                 more = iptvOrgSearch.takeIf { iptvOrgSearch.size > 12 }?.map { it.toShelf() }?.toFeed()
