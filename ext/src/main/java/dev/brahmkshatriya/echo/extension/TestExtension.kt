@@ -296,14 +296,11 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
     private fun createTrack(channel: Channel, allStreams: List<Stream>, allLogos: List<Logo>): Track {
         val trackId = getTrackId(channel.id)
         val isAvailable = allStreams.any { ch -> ch.channel == channel.id }
-        val subtitle = channel.owners.joinToString(", ")
         return Track(
             trackId,
             channel.name,
             cover = allLogos.firstOrNull { logo -> channel.id == logo.channel }?.url?.toImageHolder(),
-            subtitle = if (isAvailable) subtitle else {
-                if (subtitle.isEmpty()) "Not Supported" else "Not Supported - $subtitle"
-            },
+            subtitle = channel.owners.joinToString(", "),
             streamables = allStreams.filter { ch -> ch.channel == channel.id }
                 .sortedBy { if (it.quality.isNullOrEmpty()) 0u else
                     it.quality.substring(0, it.quality.length - 1).toUIntOrNull() ?: 0u }

@@ -27,7 +27,7 @@ class StreamFormat(private val client: OkHttpClient) {
                 else -> "UNKNOWN"
             }
         } catch (_: Exception) {
-            "UNKNOWN"
+            "HLS"
         }
     }
 
