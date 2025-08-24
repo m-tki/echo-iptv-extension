@@ -436,9 +436,9 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
                         format
                     }
                     when (type) {
-                        "hls", "error" -> Streamable.SourceType.HLS
+                        "unknown" -> Streamable.SourceType.Progressive
                         "dash" -> Streamable.SourceType.DASH
-                        else -> Streamable.SourceType.Progressive
+                        else -> Streamable.SourceType.HLS
                     }
                 }
             }
