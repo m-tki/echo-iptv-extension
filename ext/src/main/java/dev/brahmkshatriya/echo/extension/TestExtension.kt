@@ -431,11 +431,12 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
                         val format = StreamFormat(client)
                             .detectStreamFormat(streamable.id)
                             .lowercase()
-                        setting.putString(trackId, format)
+                        if (format != "error")
+                            setting.putString(trackId, format)
                         format
                     }
                     when (type) {
-                        "hls" -> Streamable.SourceType.HLS
+                        "hls", "error" -> Streamable.SourceType.HLS
                         "dash" -> Streamable.SourceType.DASH
                         else -> Streamable.SourceType.Progressive
                     }
