@@ -68,9 +68,17 @@ data class Logo(
     val channel: String,
     val url: String,
 )
+
+data class Playlist(
+    val name: String,
+    val link: String,
+    var enabled: Boolean,
+)
+
 class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeedClient,
     GlobalSettingsProvider, NetworkConnectionProvider, TrackerClient, SettingsChangeListenerClient {
     override suspend fun onInitialize() {
+        enableDefinedPlaylists()
         loadAdditionalPlaylists()
         if (setting.getBoolean("countries_initialized") == null)  {
             setting.putString("countries_serialized", call(iptvOrgCountriesLink))
@@ -89,8 +97,16 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
         SettingSwitch(
             "Restore Selected Server",
             "last_selected_server",
-            "Whether to restore last selected server for streams",
+            "Whether to restore last selected server of running stream",
             lastSelectedServer
+        ),
+        SettingList(
+            "Auto-Refresh Playlists",
+            "refresh_playlists",
+            "Download the latest version of playlists after a set period",
+            listOf("Always", "1 Day", "3 Days", "1 Week", "1 Month", "Never (No Updates)"),
+            listOf("always", "one_day", "three_days", "one_week", "one_month", "never"),
+            2
         ),
         SettingTextInput(
             "Add Playlists",
@@ -103,13 +119,22 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
             "Remove Playlists",
             "remove_playlists",
             "Remove playlists from added playlists",
-            additionalPlaylists.map { it.first },
+            additionalPlaylists.map { it.name },
             List(additionalPlaylists.size) { it.toString() }
+        ),
+        SettingMultipleChoice(
+            "Disable Playlists",
+            "disable_playlists",
+            "Disable playlists in home page and search results",
+            listOf(iptvOrgName) + definedPlaylists.map { it.name } + additionalPlaylists.map { it.name },
+            List(definedPlaylists.size + additionalPlaylists.size + 1) { it.toString() },
+            getIndicesOfDisabledPlaylists().toSet()
         )
     )
 
     private val defaultCountryCode get() = setting.getString("default_country_code")
     private val lastSelectedServer get() = setting.getBoolean("last_selected_server") ?: true
+    private val refreshPlaylists get() = setting.getString("refresh_playlists") ?: "three_days"
 
     private lateinit var setting: Settings
     private lateinit var globalSetting: Settings
@@ -132,6 +157,7 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
 
     private val iptvOrgId = "iptv_org"
     private val iptvOrgName = "IPTV-org"
+    private var iptvOrgEnabled = true
 
     private val iptvOrgChannelsLink = "https://iptv-org.github.io/api/channels.json"
     private val iptvOrgStreamsLink = "https://iptv-org.github.io/api/streams.json"
@@ -139,31 +165,32 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
     private val iptvOrgCategoriesLink = "https://iptv-org.github.io/api/categories.json"
     private val iptvOrgLogosLink = "https://iptv-org.github.io/api/logos.json"
 
-    private val m3u8Playlists = listOf(
-        "DrewLive" to "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/DrewAll.m3u8",
-        "PlexTV" to "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/PlexTV.m3u8",
-        "PlutoTV" to "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/PlutoTV.m3u8",
-        "TubiTV" to "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/TubiTV.m3u8",
-        "UDPTV" to "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/UDPTV.m3u",
-        "Roku" to "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/Roku.m3u8",
-        "LGTV" to "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/LGTV.m3u8",
-        "AriaPlus" to "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/AriaPlus.m3u8",
-        "SamsungTVPlus" to "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/SamsungTVPlus.m3u8",
-        "Xumo" to "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/Xumo.m3u8",
-        "StreamEast" to "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/StreamEast.m3u8",
-        "FSTV24" to "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/FSTV24.m3u8",
-        "PPVLand" to "http://drewlive24.duckdns.org:8081/PPVLand.m3u8",
-        "Tims247" to "http://drewlive24.duckdns.org:8081/Tims247.m3u8",
-        "Zuzz" to "http://drewlive24.duckdns.org:8081/Zuzz.m3u8",
-        "Stirr" to "https://raw.githubusercontent.com/BuddyChewChew/app-m3u-generator/refs/heads/main/playlists/stirr_all.m3u",
-        "JapanTV" to "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/JapanTV.m3u8",
-        "Local Now" to "https://www.apsattv.com/localnow.m3u",
-        "TVPass" to "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/TVPass.m3u",
-        "TheTVApp" to "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/TheTVApp.m3u8",
-        "DaddyLive" to "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/DaddyLive.m3u8",
-        "DaddyLiveEvents" to "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/DaddyLiveEvents.m3u8",
+    private val definedPlaylists = listOf(
+        Playlist ("PlexTV", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/PlexTV.m3u8", true),
+        Playlist ("PlutoTV", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/PlutoTV.m3u8", true),
+        Playlist ("TubiTV", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/TubiTV.m3u8", true),
+        Playlist ("UDPTV", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/UDPTV.m3u", true),
+        Playlist ("Roku", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/Roku.m3u8", true),
+        Playlist ("LGTV", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/LGTV.m3u8", true),
+        Playlist ("AriaPlus", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/AriaPlus.m3u8", true),
+        Playlist ("SamsungTVPlus", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/SamsungTVPlus.m3u8", true),
+        Playlist ("Xumo", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/Xumo.m3u8", true),
+        Playlist ("StreamEast", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/StreamEast.m3u8", true),
+        Playlist ("FSTV24", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/FSTV24.m3u8", true),
+        Playlist ("PPVLand", "http://drewlive24.duckdns.org:8081/PPVLand.m3u8", true),
+        Playlist ("Tims247", "http://drewlive24.duckdns.org:8081/Tims247.m3u8", true),
+        Playlist ("Zuzz", "http://drewlive24.duckdns.org:8081/Zuzz.m3u8", true),
+        Playlist ("Stirr", "https://raw.githubusercontent.com/BuddyChewChew/app-m3u-generator/refs/heads/main/playlists/stirr_all.m3u", true),
+        Playlist ("JapanTV", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/JapanTV.m3u8", true),
+        Playlist ("Local Now", "https://www.apsattv.com/localnow.m3u", true),
+        Playlist ("DrewLive", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/DrewAll.m3u8", true),
+        Playlist ("TVPass", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/TVPass.m3u", true),
+        Playlist ("TheTVApp", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/TheTVApp.m3u8", true),
+        Playlist ("DaddyLive", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/DaddyLive.m3u8", true),
+        Playlist ("DaddyLiveEvents", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/DaddyLiveEvents.m3u8", true),
     )
-    private val additionalPlaylists = emptyList<Pair<String, String>>().toMutableList()
+    private val additionalPlaylists = emptyList<Playlist>().toMutableList()
+    private val getPlaylists get() = definedPlaylists + additionalPlaylists
 
     private val client by lazy { OkHttpClient.Builder().build() }
     private suspend fun call(url: String): String = withContext(Dispatchers.IO) {
@@ -178,32 +205,75 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
             throw IllegalStateException("Failed to parse JSON: $this", it)
         }
 
-    private fun getPlaylists() = m3u8Playlists + additionalPlaylists
+    private suspend fun downloadPlaylist(id: String, link: String, currentTimeMillis: Long): String {
+        val playlist = call(link)
+        setting.putString("${id}_playlist", playlist)
+        setting.putString("${id}_download_time", currentTimeMillis.toString())
+        return playlist
+    }
+
+    private suspend fun getPlaylist(id: String, link: String, days: Long): String {
+        val currentTimeMillis = System.currentTimeMillis()
+        val downloadTime = setting.getString("${id}_download_time")
+        val downloadTimeMillis = downloadTime?.toLongOrNull()
+        return if (downloadTimeMillis != null) {
+            val elapsedMillis = currentTimeMillis - downloadTimeMillis
+            val elapsedDays = elapsedMillis / (1000 * 60 * 60 * 24)
+            if (elapsedDays >= days) {
+                downloadPlaylist(id, link, currentTimeMillis)
+            }
+            else {
+                val storedPlaylist = setting.getString("${id}_playlist")
+                storedPlaylist ?: downloadPlaylist(id, link, currentTimeMillis)
+            }
+        }
+        else {
+            downloadPlaylist(id, link, currentTimeMillis)
+        }
+    }
+
+    private suspend fun getPlaylistNoTimeCheck(id: String, link: String): String {
+        val storedPlaylist = setting.getString("${id}_playlist")
+        return storedPlaylist
+            ?: downloadPlaylist(id, link, System.currentTimeMillis())
+    }
+
+    private suspend fun getPlaylist(id: String, link: String): String {
+        return when (refreshPlaylists) {
+            "one_day" -> getPlaylist(id, link, 1)
+            "three_days" -> getPlaylist(id, link, 3)
+            "one_week" -> getPlaylist(id, link, 7)
+            "one_month" -> getPlaylist(id, link, 30)
+            "never" -> getPlaylistNoTimeCheck(id, link)
+            else -> call(link)
+        }
+    }
 
     override suspend fun onSettingsChanged(
         settings: Settings,
         key: String?
     ) {
-        if (key == "add_playlists")
-            addPlaylists()
-        else if (key == "remove_playlists")
-            removeAdditionalPlaylists()
+        when (key) {
+            "add_playlists" -> addPlaylists()
+            "remove_playlists" -> removeAdditionalPlaylists()
+            "disable_playlists" -> disablePlaylists()
+        }
     }
 
     private fun addPlaylist(name: String, link: String) {
-        val playlistsFromSetting = setting.getString("additional_playlists")
-        val playlistsFromSettingAppend = if (playlistsFromSetting == null) ""
+        val playlistsFromSetting = setting.getString("additional_playlists").orEmpty()
+        val playlistsFromSettingAppend = if (playlistsFromSetting.isEmpty()) ""
             else "$playlistsFromSetting;"
         setting.putString("additional_playlists",
-            "$playlistsFromSettingAppend$name,$link")
-        additionalPlaylists.add(name to link)
+            "$playlistsFromSettingAppend$name,$link,1")
+        additionalPlaylists.add(Playlist(name, link, true))
     }
 
     private fun addPlaylists() {
         val playlists = setting.getString("add_playlists")
         if (playlists != null) {
             setting.putString("add_playlists", null)
-            var playlistNumber = m3u8Playlists.size + additionalPlaylists.size + 2
+            var playlistNumber = definedPlaylists.size + additionalPlaylists.size + 2
             val splitPlaylists = playlists.trim().split(';')
             for (playlist in splitPlaylists) {
                 val splitPlaylist = playlist.trim().split(',')
@@ -222,24 +292,82 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
             val playlists = setting.getString("additional_playlists").orEmpty()
             if (playlists.isNotEmpty()) {
                 val toRemoveIndices = toRemovePlaylists.mapNotNull { it.toIntOrNull() }
-                toRemoveIndices.forEach { additionalPlaylists.removeAt(it) }
-                val newPlaylists = playlists.split(';')
-                    .filterIndexed { index, _ -> index !in toRemoveIndices }
-                    .joinToString(";")
+                toRemoveIndices.forEach {
+                    if (it in additionalPlaylists.indices)
+                        additionalPlaylists.removeAt(it)
+                }
+                val newPlaylists = additionalPlaylists.joinToString(";") {
+                    "${it.name},${it.link},${if (it.enabled) "1" else "0"}"
+                }
                 setting.putString("additional_playlists", newPlaylists)
             }
             setting.putStringSet("remove_playlists", null)
         }
     }
 
+    fun String.toBool(): Boolean {
+        return when (this) {
+            "1" -> true
+            "0" -> false
+            else -> throw IllegalArgumentException("String must be '1' or '0'")
+        }
+    }
+
     private fun loadAdditionalPlaylists() {
-        val playlists = setting.getString("additional_playlists")
-        if (playlists != null) {
+        val playlists = setting.getString("additional_playlists").orEmpty()
+        if (playlists.isNotEmpty()) {
             val splitPlaylists = playlists.split(';')
             for (playlist in splitPlaylists) {
                 val splitPlaylist = playlist.split(',')
-                additionalPlaylists.add(splitPlaylist[0] to splitPlaylist[1])
+                additionalPlaylists.add(Playlist(splitPlaylist[0], splitPlaylist[1], splitPlaylist[2].toBool()))
             }
+        }
+    }
+
+    private fun enableDefinedPlaylists() {
+        val enabledPlaylists = setting.getString("enabled_playlists")
+        if (enabledPlaylists != null) {
+            val splitEnabledPlaylists = enabledPlaylists.split(';')
+            if (splitEnabledPlaylists.size == definedPlaylists.size + 1) {
+                iptvOrgEnabled = splitEnabledPlaylists[0].toBool()
+                definedPlaylists.forEachIndexed { index, _ ->
+                    definedPlaylists[index].enabled = splitEnabledPlaylists[index + 1].toBool()
+                }
+            }
+        }
+    }
+
+    private fun putEnabledPlaylists() {
+        val enabledPlaylists = definedPlaylists
+            .joinToString(";", if (iptvOrgEnabled) "1;" else "0;")
+            { if (it.enabled) "1" else "0" }
+        setting.putString("enabled_playlists", enabledPlaylists)
+        val modifiedPlaylists = additionalPlaylists.joinToString(";") {
+            "${it.name},${it.link},${if (it.enabled) "1" else "0"}"
+        }
+        setting.putString("additional_playlists", modifiedPlaylists)
+    }
+
+    private fun getIndicesOfDisabledPlaylists(): List<Int> {
+        return listOfNotNull(if (!iptvOrgEnabled) 0 else null) +
+                definedPlaylists.mapIndexedNotNull { index, playlist ->
+                    if (!playlist.enabled) index + 1 else null } +
+                definedPlaylists.mapIndexedNotNull { index, playlist ->
+                    if (!playlist.enabled) index + definedPlaylists.size + 1 else null }
+    }
+
+    private fun disablePlaylists() {
+        val playlistsToDisable = setting.getStringSet("disable_playlists")
+        if (playlistsToDisable != null) {
+            iptvOrgEnabled = "0" !in playlistsToDisable
+            definedPlaylists
+                .forEachIndexed { index, _ ->
+                    definedPlaylists[index].enabled = (index + 1).toString() !in playlistsToDisable }
+            additionalPlaylists
+                .forEachIndexed { index, _ ->
+                    additionalPlaylists[index].enabled = (index + definedPlaylists.size + 1).toString() !in playlistsToDisable }
+            putEnabledPlaylists()
+            setting.putStringSet("disable_playlists", null)
         }
     }
 
@@ -322,7 +450,7 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
         }
 
     private suspend fun String.toShelf(countryCode: String): List<Shelf> {
-        val allCategories = call(iptvOrgCategoriesLink).toData<List<Category>>()
+        val allCategories = getPlaylist("${iptvOrgId}_categories", iptvOrgCategoriesLink).toData<List<Category>>()
         val allChannels = this.toData<List<Channel>>().filter {
             !it.isNsfw && it.country == countryCode
         }
@@ -331,8 +459,8 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
         if (allChannels.any { it.categories.isEmpty() }) {
             allCategoriesFiltered.add(Category(name = "Unknown", id = "unknown"))
         }
-        val allStreams = call(iptvOrgStreamsLink).toData<List<Stream>>()
-        val allLogos = call(iptvOrgLogosLink).toData<List<Logo>>()
+        val allStreams = getPlaylist("${iptvOrgId}_streams", iptvOrgStreamsLink).toData<List<Stream>>()
+        val allLogos = getPlaylist("${iptvOrgId}_logos", iptvOrgLogosLink).toData<List<Logo>>()
         return listOf(
             Shelf.Lists.Categories(
                 "iptv_org_categories",
@@ -352,7 +480,7 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
     }
 
     suspend fun iptvOrgFeed(): List<Shelf> {
-        val countries = call(iptvOrgCountriesLink).toData<List<Country>>()
+        val countries = getPlaylist("${iptvOrgId}_countries", iptvOrgCountriesLink).toData<List<Country>>()
         val (default, others) = countries.partition { it.code == defaultCountryCode }
         return listOf(
             Shelf.Lists.Categories(
@@ -363,7 +491,7 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
                         it.code,
                         it.name,
                         PagedData.Single {
-                            call(iptvOrgChannelsLink).toShelf(it.code)
+                            getPlaylist("${iptvOrgId}_channels", iptvOrgChannelsLink).toShelf(it.code)
                         }.toFeed()
                     )
                 },
@@ -375,25 +503,26 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
     override suspend fun loadHomeFeed(): Feed<Shelf> {
         addPlaylists()
         removeAdditionalPlaylists()
+        disablePlaylists()
         val iptvOrgPlaylist = Shelf.Category(
             iptvOrgId,
             iptvOrgName,
             PagedData.Single {
                 iptvOrgFeed()
             }.toFeed()
-        )
+        ).takeIf { iptvOrgEnabled }
         return listOf(
             Shelf.Lists.Categories(
                 "playlists",
                 "Playlists",
-                listOf(iptvOrgPlaylist) + getPlaylists().map {
+                listOfNotNull(iptvOrgPlaylist) + getPlaylists.mapNotNull { playlist ->
                     Shelf.Category(
-                        it.first.lowercase(),
-                        it.first,
+                        playlist.name.lowercase(),
+                        playlist.name,
                         PagedData.Single {
-                            call(it.second).toPlaylistShelf(titleToId(it.first))
+                            getPlaylist("${playlist.name.lowercase()}_playlist", playlist.link).toPlaylistShelf(titleToId(playlist.name))
                         }.toFeed()
-                    )
+                    ).takeIf { playlist.enabled }
                 },
                 type = Shelf.Lists.Type.Grid
             )
@@ -520,8 +649,8 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
     }
 
     private suspend fun String.toIptvOrgSearch(query: String): List<EchoMediaItem> {
-        val allStreams = call(iptvOrgStreamsLink).toData<List<Stream>>()
-        val allLogos = call(iptvOrgLogosLink).toData<List<Logo>>()
+        val allStreams = getPlaylist("${iptvOrgId}_streams", iptvOrgStreamsLink).toData<List<Stream>>()
+        val allLogos = getPlaylist("${iptvOrgId}_logos", iptvOrgLogosLink).toData<List<Logo>>()
         return this.toData<List<Channel>>().filter {
             !it.isNsfw && it.name.contains(query, true)
         }.take(100).map {
@@ -541,23 +670,28 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
 
     private suspend fun sortSearchShelf(query: String): List<Shelf> {
         val parser = M3U8Parser()
-        val playlistItems = getPlaylists().mapNotNull { playlist ->
+        val playlistItems = getPlaylists.mapNotNull { playlist ->
+            if (!playlist.enabled) return@mapNotNull null
             val items = try {
-                call(playlist.second)
-                    .toPlaylistSearch(titleToId(playlist.first), parser, query)
+                getPlaylist("${playlist.name.lowercase()}_playlist", playlist.link)
+                    .toPlaylistSearch(titleToId(playlist.name), parser, query)
             } catch (_: Exception) {
                 emptyList()
             }
             Shelf.Lists.Items(
-                "${titleToId(playlist.first)}_search",
-                playlist.first,
+                "${titleToId(playlist.name)}_search",
+                playlist.name,
                 items.take(12),
                 more = items.takeIf { items.size > 12 }?.map { it.toShelf() }?.toFeed()
             ).takeUnless { items.isEmpty() }
         }
-        val iptvOrgSearch = try {
-            call(iptvOrgChannelsLink).toIptvOrgSearch(query)
-        } catch (_: Exception) {
+        val iptvOrgSearch = if (iptvOrgEnabled) {
+            try {
+                getPlaylist("${iptvOrgId}_channels", iptvOrgChannelsLink).toIptvOrgSearch(query)
+            } catch (_: Exception) {
+                emptyList()
+            }
+        } else {
             emptyList()
         }
         return listOfNotNull(
