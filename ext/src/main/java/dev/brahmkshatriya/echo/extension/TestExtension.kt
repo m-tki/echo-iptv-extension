@@ -263,7 +263,9 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
                 else playlist
             }
         } catch (e: Exception) {
-            if (emptyIfInvalid) ""
+            if (fallbackCachedPlaylist && setting.getString("${id}_download_time") != null)
+                setting.getString("${id}_content")!!
+            else if (emptyIfInvalid) ""
             else throw e
         }
     }
