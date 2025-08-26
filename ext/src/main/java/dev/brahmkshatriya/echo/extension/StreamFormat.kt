@@ -3,6 +3,7 @@ package dev.brahmkshatriya.echo.extension
 import dev.brahmkshatriya.echo.common.helpers.ContinuationCallback.Companion.await
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okio.Buffer
@@ -22,8 +23,8 @@ class StreamFormat(private val client: OkHttpClient) {
             // Check content via partial download
             val partialContent = callPartial(url)
             when {
-                isHlsByContent(partialContent) -> "HLS"
-                isDashByContent(partialContent) -> "DASH"
+                StreamFormatByContent.isHlsByContent(partialContent) -> "HLS"
+                StreamFormatByContent.isDashByContent(partialContent) -> "DASH"
                 else -> "UNKNOWN"
             }
         } catch (_: Exception) {
@@ -68,22 +69,37 @@ class StreamFormat(private val client: OkHttpClient) {
         return lowerType.contains("dash") ||
                 lowerType.contains("mpd")
     }
+}
 
-    // Content detection
-    private fun isHlsByContent(content: String): Boolean {
-        if (content.isBlank()) return false
-        val firstFewLines = content.lines().take(5).joinToString("\n")
-        return firstFewLines.contains("#EXTM3U") ||
-                firstFewLines.contains("#EXT-X-VERSION") ||
-                firstFewLines.contains("#EXT-X-STREAM-INF") ||
-                firstFewLines.contains("#EXTINF")
-    }
+class StreamFormatByContent() {
+    companion object {
+        fun isJsonByContent(content: String): Boolean {
+            val trimmed = content.trim()
+            if (trimmed.startsWith('{') || trimmed.startsWith('['))
+                return true
 
-    private fun isDashByContent(content: String): Boolean {
-        if (content.isBlank()) return false
-        val firstFewLines = content.lines().take(5).joinToString("\n")
-        return firstFewLines.contains("MPD") ||
-                firstFewLines.contains("xmlns=\"urn:mpeg:dash:schema:mpd:")
+            return try {
+                Json.parseToJsonElement(trimmed)
+                true
+            } catch (_: Exception) {
+                false
+            }
+        }
+
+        fun isHlsByContent(content: String): Boolean {
+            if (content.isBlank()) return false
+            val firstFewLines = content.lines().take(10).joinToString("\n")
+            return firstFewLines.contains("#EXTM3U") ||
+                    firstFewLines.contains("#EXT-X-VERSION") ||
+                    firstFewLines.contains("#EXTINF")
+        }
+
+        fun isDashByContent(content: String): Boolean {
+            if (content.isBlank()) return false
+            val firstFewLines = content.lines().take(10).joinToString("\n")
+            return firstFewLines.contains("MPD") ||
+                    firstFewLines.contains("xmlns=\"urn:mpeg:dash:schema:mpd:")
+        }
     }
 }
 
