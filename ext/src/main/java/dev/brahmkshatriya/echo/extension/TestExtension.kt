@@ -81,11 +81,13 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
         enableDefinedPlaylists()
         loadAdditionalPlaylists()
         if (setting.getBoolean("countries_initialized") == null)  {
-            val countries = getPlaylist("${iptvOrgId}_countries", iptvOrgCountriesLink, true)
-            if (countries.isNotEmpty()) {
+            try {
+                val countries = getPlaylist("${iptvOrgId}_countries", iptvOrgCountriesLink)
+                countries.toData<List<Country>>()
                 setting.putString("countries_serialized", countries)
                 setting.putBoolean("countries_initialized", true)
             }
+            catch (_: Exception) { }
         }
     }
 
@@ -243,7 +245,7 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
         return playlist
     }
 
-    private suspend fun downloadPlaylist(id: String, link: String, currentTimeMillis: Long?, emptyIfInvalid: Boolean): String {
+    private suspend fun downloadPlaylist(id: String, link: String, currentTimeMillis: Long?): String {
         return try {
             val playlist = call(link)
             if (id.endsWith("playlist")) {
@@ -251,7 +253,6 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
                     storePlaylist(id, playlist, currentTimeMillis)
                 else if (fallbackCachedPlaylist && setting.getString("${id}_download_time") != null)
                     setting.getString("${id}_content")!!
-                else if (emptyIfInvalid) ""
                 else playlist
             }
             else {
@@ -259,18 +260,16 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
                     storePlaylist(id, playlist, currentTimeMillis)
                 else if (fallbackCachedPlaylist && setting.getString("${id}_download_time") != null)
                     setting.getString("${id}_content")!!
-                else if (emptyIfInvalid) ""
                 else playlist
             }
         } catch (e: Exception) {
             if (fallbackCachedPlaylist && setting.getString("${id}_download_time") != null)
                 setting.getString("${id}_content")!!
-            else if (emptyIfInvalid) ""
             else throw e
         }
     }
 
-    private suspend fun getPlaylist(id: String, link: String, days: Long, emptyIfInvalid: Boolean): String {
+    private suspend fun getPlaylist(id: String, link: String, days: Long): String {
         val currentTimeMillis = System.currentTimeMillis()
         val downloadTime = setting.getString("${id}_download_time")
         val downloadTimeMillis = downloadTime?.toLongOrNull()
@@ -278,32 +277,32 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
             val elapsedMillis = currentTimeMillis - downloadTimeMillis
             val elapsedDays = elapsedMillis / (1000 * 60 * 60 * 24)
             if (elapsedDays >= days) {
-                downloadPlaylist(id, link, currentTimeMillis, emptyIfInvalid)
+                downloadPlaylist(id, link, currentTimeMillis)
             }
             else {
                 val storedPlaylist = setting.getString("${id}_content")
-                storedPlaylist ?: downloadPlaylist(id, link, currentTimeMillis, emptyIfInvalid)
+                storedPlaylist ?: downloadPlaylist(id, link, currentTimeMillis)
             }
         }
         else {
-            downloadPlaylist(id, link, currentTimeMillis, emptyIfInvalid)
+            downloadPlaylist(id, link, currentTimeMillis)
         }
     }
 
-    private suspend fun getPlaylistNoTimeCheck(id: String, link: String, emptyIfInvalid: Boolean): String {
+    private suspend fun getPlaylistNoTimeCheck(id: String, link: String): String {
         val storedPlaylist = setting.getString("${id}_content")
         return storedPlaylist
-            ?: downloadPlaylist(id, link, System.currentTimeMillis(), emptyIfInvalid)
+            ?: downloadPlaylist(id, link, System.currentTimeMillis())
     }
 
-    private suspend fun getPlaylist(id: String, link: String, emptyIfInvalid: Boolean): String {
+    private suspend fun getPlaylist(id: String, link: String): String {
         return when (refreshPlaylists) {
-            "one_day" -> getPlaylist(id, link, 1, emptyIfInvalid)
-            "three_days" -> getPlaylist(id, link, 3, emptyIfInvalid)
-            "one_week" -> getPlaylist(id, link, 7, emptyIfInvalid)
-            "one_month" -> getPlaylist(id, link, 30, emptyIfInvalid)
-            "never" -> getPlaylistNoTimeCheck(id, link, emptyIfInvalid)
-            else -> downloadPlaylist(id, link, null, emptyIfInvalid)
+            "one_day" -> getPlaylist(id, link, 1)
+            "three_days" -> getPlaylist(id, link, 3)
+            "one_week" -> getPlaylist(id, link, 7)
+            "one_month" -> getPlaylist(id, link, 30)
+            "never" -> getPlaylistNoTimeCheck(id, link)
+            else -> downloadPlaylist(id, link, null)
         }
     }
 
@@ -513,7 +512,7 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
         }
 
     private suspend fun String.toShelf(countryCode: String): List<Shelf> {
-        val allCategories = getPlaylist("${iptvOrgId}_categories", iptvOrgCategoriesLink, false).toData<List<Category>>()
+        val allCategories = getPlaylist("${iptvOrgId}_categories", iptvOrgCategoriesLink).toData<List<Category>>()
         val allChannels = this.toData<List<Channel>>().filter {
             !it.isNsfw && it.country == countryCode
         }
@@ -522,8 +521,8 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
         if (allChannels.any { it.categories.isEmpty() }) {
             allCategoriesFiltered.add(Category(name = "Unknown", id = "unknown"))
         }
-        val allStreams = getPlaylist("${iptvOrgId}_streams", iptvOrgStreamsLink, false).toData<List<Stream>>()
-        val allLogos = getPlaylist("${iptvOrgId}_logos", iptvOrgLogosLink, false).toData<List<Logo>>()
+        val allStreams = getPlaylist("${iptvOrgId}_streams", iptvOrgStreamsLink).toData<List<Stream>>()
+        val allLogos = getPlaylist("${iptvOrgId}_logos", iptvOrgLogosLink).toData<List<Logo>>()
         return listOf(
             Shelf.Lists.Categories(
                 "${iptvOrgId}_categories",
@@ -543,7 +542,7 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
     }
 
     suspend fun iptvOrgFeed(): List<Shelf> {
-        val countries = getPlaylist("${iptvOrgId}_countries", iptvOrgCountriesLink, false).toData<List<Country>>()
+        val countries = getPlaylist("${iptvOrgId}_countries", iptvOrgCountriesLink).toData<List<Country>>()
         val (default, others) = countries.partition { it.code == defaultCountryCode }
         return listOf(
             Shelf.Lists.Categories(
@@ -554,7 +553,7 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
                         it.code,
                         it.name,
                         PagedData.Single {
-                            getPlaylist("${iptvOrgId}_channels", iptvOrgChannelsLink, false).toShelf(it.code)
+                            getPlaylist("${iptvOrgId}_channels", iptvOrgChannelsLink).toShelf(it.code)
                         }.toFeed()
                     )
                 },
@@ -583,7 +582,7 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
                         playlistNameToId(playlist.name),
                         playlist.name,
                         PagedData.Single {
-                            getPlaylist("${playlistNameToId(playlist.name)}_playlist", playlist.link, false).toPlaylistShelf(titleToId(playlist.name))
+                            getPlaylist("${playlistNameToId(playlist.name)}_playlist", playlist.link).toPlaylistShelf(titleToId(playlist.name))
                         }.toFeed()
                     ).takeIf { playlist.enabled }
                 },
@@ -718,12 +717,8 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
     }
 
     private suspend fun String.toIptvOrgSearch(query: String): List<EchoMediaItem> {
-        val streams = getPlaylist("${iptvOrgId}_streams", iptvOrgStreamsLink, true)
-        if (streams.isEmpty()) return emptyList()
-        val logos = getPlaylist("${iptvOrgId}_logos", iptvOrgLogosLink, true)
-        val allStreams = streams.toData<List<Stream>>()
-        val allLogos = if (logos.isNotEmpty()) logos.toData<List<Logo>>()
-            else emptyList()
+        val allStreams = getPlaylist("${iptvOrgId}_streams", iptvOrgStreamsLink).toData<List<Stream>>()
+        val allLogos = getPlaylist("${iptvOrgId}_logos", iptvOrgLogosLink).toData<List<Logo>>()
         return this.toData<List<Channel>>().filter {
             !it.isNsfw && it.name.contains(query, true)
         }.take(100).map {
@@ -745,10 +740,13 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
         val parser = M3U8Parser()
         val playlistItems = getPlaylists.mapNotNull { playlist ->
             if (!playlist.enabled) return@mapNotNull null
-            val playlistContent =
-                getPlaylist("${playlistNameToId(playlist.name)}_playlist", playlist.link, true)
-            if (playlistContent.isEmpty()) return@mapNotNull null
-            val items = playlistContent.toPlaylistSearch(titleToId(playlist.name), parser, query)
+            val items = try {
+                getPlaylist("${playlistNameToId(playlist.name)}_playlist", playlist.link)
+                    .toPlaylistSearch(titleToId(playlist.name), parser, query)
+            }
+            catch (_: Exception) {
+                emptyList()
+            }
             Shelf.Lists.Items(
                 "${titleToId(playlist.name)}_search",
                 playlist.name,
@@ -757,11 +755,13 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
             ).takeUnless { items.isEmpty() }
         }
         val iptvOrgSearch = if (iptvOrgEnabled) {
-            val channels = getPlaylist("${iptvOrgId}_channels", iptvOrgChannelsLink, true)
-            if (channels.isNotEmpty())
-                channels.toIptvOrgSearch(query)
-            else
+            try {
+                getPlaylist("${iptvOrgId}_channels", iptvOrgChannelsLink)
+                    .toIptvOrgSearch(query)
+            }
+            catch (_: Exception) {
                 emptyList()
+            }
         } else {
             emptyList()
         }
