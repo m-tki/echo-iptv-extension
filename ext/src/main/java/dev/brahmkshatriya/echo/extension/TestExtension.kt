@@ -93,7 +93,7 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
 
     private fun countriesNames(): List<String> {
         val countries = setting.getString("countries_serialized")
-        if (countries != null && countries.isNotEmpty())
+        if (countries != null)
             return countries.toData<List<Country>>().map { it.name }
         else
             return emptyList()
@@ -101,7 +101,7 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
 
     private fun countriesCodes(): List<String> {
         val countries = setting.getString("countries_serialized")
-        if (countries != null && countries.isNotEmpty())
+        if (countries != null)
             return countries.toData<List<Country>>().map { it.code }
         else
             return emptyList()
@@ -194,19 +194,15 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
     private val iptvOrgLogosLink = "https://iptv-org.github.io/api/logos.json"
 
     private val definedPlaylists = listOf(
-        Playlist ("PlexTV", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/PlexTV.m3u8", true),
         Playlist ("PlutoTV", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/PlutoTV.m3u8", true),
         Playlist ("TubiTV", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/TubiTV.m3u8", true),
-        Playlist ("UDPTV", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/UDPTV.m3u", true),
         Playlist ("Roku", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/Roku.m3u8", true),
         Playlist ("LGTV", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/LGTV.m3u8", true),
         Playlist ("AriaPlus", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/AriaPlus.m3u8", true),
         Playlist ("SamsungTVPlus", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/SamsungTVPlus.m3u8", true),
+        Playlist ("PlexTV", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/PlexTV.m3u8", true),
         Playlist ("Xumo", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/Xumo.m3u8", true),
         Playlist ("StreamEast", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/StreamEast.m3u8", true),
-        Playlist ("FSTV24", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/FSTV24.m3u8", true),
-        Playlist ("PPVLand", "http://drewlive24.duckdns.org:8081/PPVLand.m3u8", true),
-        Playlist ("Tims247", "http://drewlive24.duckdns.org:8081/Tims247.m3u8", true),
         Playlist ("Zuzz", "http://drewlive24.duckdns.org:8081/Zuzz.m3u8", true),
         Playlist ("Stirr", "https://raw.githubusercontent.com/BuddyChewChew/app-m3u-generator/refs/heads/main/playlists/stirr_all.m3u", true),
         Playlist ("JapanTV", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/JapanTV.m3u8", true),
