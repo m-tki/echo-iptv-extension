@@ -211,7 +211,6 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
         Playlist ("TVPass", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/TVPass.m3u", true),
         Playlist ("TheTVApp", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/TheTVApp.m3u8", true),
         Playlist ("DaddyLive", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/DaddyLive.m3u8", true),
-        Playlist ("DaddyLiveEvents", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/DaddyLiveEvents.m3u8", true),
     )
     private val additionalPlaylists = emptyList<Playlist>().toMutableList()
     private val getPlaylists get() = definedPlaylists + additionalPlaylists
