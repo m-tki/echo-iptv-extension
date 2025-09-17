@@ -194,23 +194,22 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
     private val iptvOrgLogosLink = "https://iptv-org.github.io/api/logos.json"
 
     private val definedPlaylists = listOf(
-        Playlist ("PlutoTV", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/PlutoTV.m3u8", true),
-        Playlist ("TubiTV", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/TubiTV.m3u8", true),
-        Playlist ("Roku", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/Roku.m3u8", true),
-        Playlist ("LGTV", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/LGTV.m3u8", true),
-        Playlist ("AriaPlus", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/AriaPlus.m3u8", true),
-        Playlist ("SamsungTVPlus", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/SamsungTVPlus.m3u8", true),
-        Playlist ("PlexTV", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/PlexTV.m3u8", true),
-        Playlist ("Xumo", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/Xumo.m3u8", true),
-        Playlist ("StreamEast", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/StreamEast.m3u8", true),
-        Playlist ("Zuzz", "http://drewlive24.duckdns.org:8081/Zuzz.m3u8", true),
-        Playlist ("Stirr", "https://raw.githubusercontent.com/BuddyChewChew/app-m3u-generator/refs/heads/main/playlists/stirr_all.m3u", true),
-        Playlist ("JapanTV", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/JapanTV.m3u8", true),
-        Playlist ("Local Now", "https://www.apsattv.com/localnow.m3u", true),
-        Playlist ("DrewLive", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/DrewAll.m3u8", true),
-        Playlist ("TVPass", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/TVPass.m3u", true),
-        Playlist ("TheTVApp", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/TheTVApp.m3u8", true),
-        Playlist ("DaddyLive", "https://raw.githubusercontent.com/Drewski2423/DrewLive/refs/heads/main/DaddyLive.m3u8", true),
+        Playlist ("PlutoTV", "https://raw.githubusercontent.com/Drewski2423/DrewLive/main/PlutoTV.m3u8", true),
+        Playlist ("TubiTV", "https://raw.githubusercontent.com/Drewski2423/DrewLive/main/TubiTV.m3u8", true),
+        Playlist ("Roku", "https://raw.githubusercontent.com/Drewski2423/DrewLive/main/Roku.m3u8", true),
+        Playlist ("LGTV", "https://raw.githubusercontent.com/Drewski2423/DrewLive/main/LGTV.m3u8", true),
+        Playlist ("AriaPlus", "https://raw.githubusercontent.com/Drewski2423/DrewLive/main/AriaPlus.m3u8", true),
+        Playlist ("SamsungTVPlus", "https://raw.githubusercontent.com/Drewski2423/DrewLive/main/SamsungTVPlus.m3u8", true),
+        Playlist ("PlexTV", "https://raw.githubusercontent.com/Drewski2423/DrewLive/main/PlexTV.m3u8", true),
+        Playlist ("Xumo", "https://raw.githubusercontent.com/Drewski2423/DrewLive/main/Xumo.m3u8", true),
+        Playlist ("Stirr", "https://raw.githubusercontent.com/BuddyChewChew/app-m3u-generator/main/playlists/stirr_all.m3u", true),
+        Playlist ("JapanTV", "https://raw.githubusercontent.com/Drewski2423/DrewLive/main/JapanTV.m3u8", true),
+        Playlist ("Local Now", "https://raw.githubusercontent.com/Drewski2423/DrewLive/main/LocalNowTV.m3u8", true),
+        Playlist ("PPVLand", "https://raw.githubusercontent.com/Drewski2423/DrewLive/main/PPVLand.m3u8", true),
+        Playlist ("TVPass", "https://raw.githubusercontent.com/Drewski2423/DrewLive/main/TVPass.m3u", true),
+        Playlist ("TheTVApp", "https://raw.githubusercontent.com/Drewski2423/DrewLive/main/TheTVApp.m3u8", true),
+        Playlist ("DrewLive", "https://raw.githubusercontent.com/Drewski2423/DrewLive/main/DrewAll.m3u8", true),
+        Playlist ("DaddyLive", "https://raw.githubusercontent.com/Drewski2423/DrewLive/main/DaddyLive.m3u8", true),
     )
     private val additionalPlaylists = emptyList<Playlist>().toMutableList()
     private val getPlaylists get() = definedPlaylists + additionalPlaylists
@@ -452,9 +451,8 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
 
     private fun String.toPlaylistShelf(playlistId: String): List<Shelf> {
         val parser = M3U8Parser()
-        val entries = parser.parse(this)
-        if (entries.any { it.groupTitle.isEmpty() } ||
-            entries.map { it.groupTitle }.distinct().size == 1) {
+        val entries = parser.parse(this).map { it.copy(groupTitle = it.groupTitle.ifEmpty { "Unknown" }) }
+        if (entries.map { it.groupTitle }.distinct().size == 1) {
             return getStreams(playlistId, entries)
         }
         else {
@@ -558,9 +556,6 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
     }
 
     override suspend fun loadHomeFeed(): Feed<Shelf> {
-        addPlaylists()
-        removeAdditionalPlaylists()
-        disablePlaylists()
         val iptvOrgPlaylist = Shelf.Category(
             iptvOrgId,
             iptvOrgName,
@@ -583,7 +578,7 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
                 },
                 type = Shelf.Lists.Type.Grid
             )
-        ).toFeed()
+        ).toFeed(Feed.Buttons())
     }
 
     override suspend fun loadFeed(track: Track): Feed<Shelf>? = null
@@ -681,14 +676,7 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
                 stream.extras
             )
         }
-        return Track(
-            track.id,
-            track.title,
-            cover = track.cover,
-            subtitle = track.subtitle,
-            streamables = streams,
-            isPlayable = track.isPlayable
-        )
+        return track.copy(streamables = streams)
     }
 
     override suspend fun loadTrack(track: Track, isDownload: Boolean): Track {
