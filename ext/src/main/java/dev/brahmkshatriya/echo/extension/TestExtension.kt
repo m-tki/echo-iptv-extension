@@ -202,12 +202,13 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
         Playlist ("SamsungTVPlus", "https://raw.githubusercontent.com/Drewski2423/DrewLive/main/SamsungTVPlus.m3u8", true),
         Playlist ("PlexTV", "https://raw.githubusercontent.com/Drewski2423/DrewLive/main/PlexTV.m3u8", true),
         Playlist ("Xumo", "https://raw.githubusercontent.com/Drewski2423/DrewLive/main/Xumo.m3u8", true),
+        Playlist ("MoveOnJoy", "https://raw.githubusercontent.com/Drewski2423/DrewLive/main/MoveOnJoy.m3u8", true),
+        Playlist ("A1x", "https://raw.githubusercontent.com/Drewski2423/DrewLive/main/A1x.m3u8", true),
         Playlist ("Stirr", "https://raw.githubusercontent.com/BuddyChewChew/app-m3u-generator/main/playlists/stirr_all.m3u", true),
         Playlist ("JapanTV", "https://raw.githubusercontent.com/Drewski2423/DrewLive/main/JapanTV.m3u8", true),
         Playlist ("LocalNowTV", "https://raw.githubusercontent.com/Drewski2423/DrewLive/main/LocalNowTV.m3u8", true),
         Playlist ("TVPass", "https://raw.githubusercontent.com/Drewski2423/DrewLive/main/TVPass.m3u", true),
         Playlist ("TheTVApp", "https://raw.githubusercontent.com/Drewski2423/DrewLive/main/TheTVApp.m3u8", true),
-        Playlist ("DrewLive", "https://raw.githubusercontent.com/Drewski2423/DrewLive/main/DrewAll.m3u8", true),
         Playlist ("DaddyLive", "https://raw.githubusercontent.com/Drewski2423/DrewLive/main/DaddyLive.m3u8", true),
     )
     private val additionalPlaylists = emptyList<Playlist>().toMutableList()
@@ -230,7 +231,7 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
         val currentTime = if (currentTimeMillis == null &&
             fallbackCachedPlaylist &&
             setting.getString("${id}_download_time") == null) System.currentTimeMillis()
-            else currentTimeMillis
+        else currentTimeMillis
         if (currentTime != null) {
             setting.putString("${id}_content", playlist)
             setting.putString("${id}_download_time", currentTime.toString())
@@ -316,7 +317,7 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
     private fun addPlaylist(name: String, link: String) {
         val playlistsFromSetting = setting.getString("additional_playlists").orEmpty()
         val playlistsFromSettingAppend = if (playlistsFromSetting.isEmpty()) ""
-            else "$playlistsFromSetting;"
+        else "$playlistsFromSetting;"
         setting.putString("additional_playlists",
             "$playlistsFromSettingAppend$name,$link,1")
         additionalPlaylists.add(Playlist(name, link, true))
@@ -658,10 +659,10 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
         val globalQuality = globalSetting.getString(streamQuality)
         val globalUnmeteredQuality = globalSetting.getString(unmeteredStreamQuality)
         val quality = if (extQuality in streamQualities) extQuality
-            else if (currentNetworkConnection == NetworkConnection.Unmetered &&
-                globalUnmeteredQuality in streamQualities) globalUnmeteredQuality
-            else if (globalQuality in streamQualities) globalQuality
-            else streamQualities[1]
+        else if (currentNetworkConnection == NetworkConnection.Unmetered &&
+            globalUnmeteredQuality in streamQualities) globalUnmeteredQuality
+        else if (globalQuality in streamQualities) globalQuality
+        else streamQualities[1]
         val newIdx = when (quality) {
             streamQualities[0] -> track.streamables.size - 1
             streamQualities[1] -> track.streamables.size / 2
