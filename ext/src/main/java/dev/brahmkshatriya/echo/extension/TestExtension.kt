@@ -205,7 +205,6 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
         Playlist ("A1x", "https://git.nadeko.net/Drewski2423/DrewLive/raw/branch/main/A1x.m3u8", true),
         Playlist ("LocalNowTV", "https://git.nadeko.net/Drewski2423/DrewLive/raw/branch/main/LocalNowTV.m3u8", true),
         Playlist ("FSTV24", "https://git.nadeko.net/Drewski2423/DrewLive/src/branch/main/FSTV24.m3u8", true),
-        Playlist ("DaddyLive", "https://git.nadeko.net/Drewski2423/DrewLive/raw/branch/main/DaddyLive.m3u8", true),
     )
     private val additionalPlaylists = emptyList<Playlist>().toMutableList()
     private val getPlaylists get() = definedPlaylists + additionalPlaylists
