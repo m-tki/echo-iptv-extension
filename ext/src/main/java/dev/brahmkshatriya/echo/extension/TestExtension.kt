@@ -201,10 +201,8 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
         Playlist ("TubiTV", "https://raw.githubusercontent.com/BuddyChewChew/app-m3u-generator/main/playlists/tubi_all.m3u", true),
         Playlist ("LGTV", "https://git.nadeko.net/Drewski2423/DrewLive/raw/branch/main/LGTV.m3u8", true),
         Playlist ("AriaPlus", "https://git.nadeko.net/Drewski2423/DrewLive/raw/branch/main/AriaPlus.m3u8", true),
-        Playlist ("MoveOnJoy", "https://git.nadeko.net/Drewski2423/DrewLive/raw/branch/main/MoveOnJoy.m3u8", true),
         Playlist ("A1x", "https://git.nadeko.net/Drewski2423/DrewLive/raw/branch/main/A1x.m3u8", true),
         Playlist ("LocalNowTV", "https://git.nadeko.net/Drewski2423/DrewLive/raw/branch/main/LocalNowTV.m3u8", true),
-        Playlist ("FSTV24", "https://git.nadeko.net/Drewski2423/DrewLive/src/branch/main/FSTV24.m3u8", true),
     )
     private val additionalPlaylists = emptyList<Playlist>().toMutableList()
     private val getPlaylists get() = definedPlaylists + additionalPlaylists
