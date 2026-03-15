@@ -194,22 +194,18 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
     private val iptvOrgLogosLink = "https://iptv-org.github.io/api/logos.json"
 
     private val definedPlaylists = listOf(
-        Playlist ("PlutoTV", "https://raw.githubusercontent.com/Drewski2423/DrewLive/main/PlutoTV.m3u8", true),
-        Playlist ("TubiTV", "https://raw.githubusercontent.com/Drewski2423/DrewLive/main/TubiTV.m3u8", true),
-        Playlist ("Roku", "https://raw.githubusercontent.com/Drewski2423/DrewLive/main/Roku.m3u8", true),
-        Playlist ("LGTV", "https://raw.githubusercontent.com/Drewski2423/DrewLive/main/LGTV.m3u8", true),
-        Playlist ("AriaPlus", "https://raw.githubusercontent.com/Drewski2423/DrewLive/main/AriaPlus.m3u8", true),
-        Playlist ("SamsungTVPlus", "https://raw.githubusercontent.com/Drewski2423/DrewLive/main/SamsungTVPlus.m3u8", true),
-        Playlist ("PlexTV", "https://raw.githubusercontent.com/Drewski2423/DrewLive/main/PlexTV.m3u8", true),
-        Playlist ("Xumo", "https://raw.githubusercontent.com/Drewski2423/DrewLive/main/Xumo.m3u8", true),
-        Playlist ("MoveOnJoy", "https://raw.githubusercontent.com/Drewski2423/DrewLive/main/MoveOnJoy.m3u8", true),
-        Playlist ("A1x", "https://raw.githubusercontent.com/Drewski2423/DrewLive/main/A1x.m3u8", true),
-        Playlist ("Stirr", "https://raw.githubusercontent.com/BuddyChewChew/app-m3u-generator/main/playlists/stirr_all.m3u", true),
-        Playlist ("JapanTV", "https://raw.githubusercontent.com/Drewski2423/DrewLive/main/JapanTV.m3u8", true),
-        Playlist ("LocalNowTV", "https://raw.githubusercontent.com/Drewski2423/DrewLive/main/LocalNowTV.m3u8", true),
-        Playlist ("TVPass", "https://raw.githubusercontent.com/Drewski2423/DrewLive/main/TVPass.m3u", true),
-        Playlist ("TheTVApp", "https://raw.githubusercontent.com/Drewski2423/DrewLive/main/TheTVApp.m3u8", true),
-        Playlist ("DaddyLive", "https://raw.githubusercontent.com/Drewski2423/DrewLive/main/DaddyLive.m3u8", true),
+        Playlist ("PlexTV", "https://raw.githubusercontent.com/BuddyChewChew/app-m3u-generator/main/playlists/plex_all.m3u", true),
+        Playlist ("PlutoTV", "https://raw.githubusercontent.com/BuddyChewChew/app-m3u-generator/main/playlists/plutotv_all.m3u", true),
+        Playlist ("Roku", "https://raw.githubusercontent.com/BuddyChewChew/app-m3u-generator/main/playlists/roku_all.m3u", true),
+        Playlist ("SamsungTVPlus", "https://raw.githubusercontent.com/BuddyChewChew/app-m3u-generator/main/playlists/samsungtvplus_all.m3u", true),
+        Playlist ("TubiTV", "https://raw.githubusercontent.com/BuddyChewChew/app-m3u-generator/main/playlists/tubi_all.m3u", true),
+        Playlist ("LGTV", "https://git.nadeko.net/Drewski2423/DrewLive/raw/branch/main/LGTV.m3u8", true),
+        Playlist ("AriaPlus", "https://git.nadeko.net/Drewski2423/DrewLive/raw/branch/main/AriaPlus.m3u8", true),
+        Playlist ("MoveOnJoy", "https://git.nadeko.net/Drewski2423/DrewLive/raw/branch/main/MoveOnJoy.m3u8", true),
+        Playlist ("A1x", "https://git.nadeko.net/Drewski2423/DrewLive/raw/branch/main/A1x.m3u8", true),
+        Playlist ("LocalNowTV", "https://git.nadeko.net/Drewski2423/DrewLive/raw/branch/main/LocalNowTV.m3u8", true),
+        Playlist ("FSTV24", "https://git.nadeko.net/Drewski2423/DrewLive/src/branch/main/FSTV24.m3u8", true),
+        Playlist ("DaddyLive", "https://git.nadeko.net/Drewski2423/DrewLive/raw/branch/main/DaddyLive.m3u8", true),
     )
     private val additionalPlaylists = emptyList<Playlist>().toMutableList()
     private val getPlaylists get() = definedPlaylists + additionalPlaylists
