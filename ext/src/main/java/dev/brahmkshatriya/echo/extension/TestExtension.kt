@@ -199,10 +199,8 @@ class TestExtension() : ExtensionClient, HomeFeedClient, TrackClient, SearchFeed
         Playlist ("Roku", "https://raw.githubusercontent.com/BuddyChewChew/app-m3u-generator/main/playlists/roku_all.m3u", true),
         Playlist ("SamsungTVPlus", "https://raw.githubusercontent.com/BuddyChewChew/app-m3u-generator/main/playlists/samsungtvplus_all.m3u", true),
         Playlist ("TubiTV", "https://raw.githubusercontent.com/BuddyChewChew/app-m3u-generator/main/playlists/tubi_all.m3u", true),
-        Playlist ("LGTV", "https://git.nadeko.net/Drewski2423/DrewLive/raw/branch/main/LGTV.m3u8", true),
-        Playlist ("AriaPlus", "https://git.nadeko.net/Drewski2423/DrewLive/raw/branch/main/AriaPlus.m3u8", true),
-        Playlist ("A1x", "https://git.nadeko.net/Drewski2423/DrewLive/raw/branch/main/A1x.m3u8", true),
-        Playlist ("LocalNowTV", "https://git.nadeko.net/Drewski2423/DrewLive/raw/branch/main/LocalNowTV.m3u8", true),
+        Playlist ("AriaPlus", "https://raw.githubusercontent.com/theariatv/theariatv.github.io/main/aria+.m3u", true),
+        Playlist ("Doms", "https://raw.githubusercontent.com/doms9/iptv/default/M3U8/base.m3u8", true),
     )
     private val additionalPlaylists = emptyList<Playlist>().toMutableList()
     private val getPlaylists get() = definedPlaylists + additionalPlaylists
